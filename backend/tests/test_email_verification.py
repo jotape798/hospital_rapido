@@ -1,244 +1,259 @@
-from datetime import datetime, timedelta
+from datetime import timedelta
+import logging
 
+import pytest
 from sqlalchemy import func, select
 
-from test_integration import client, data
+from test_integration import client, data, login
+from app.core import clock
 from app.core.database import SessionLocal
+from app.core.security import pwd
 from app.main import migrate_database
 from app.models import EmailVerification, User
 from app.routes import email_verification as routes
-
-
-def _register_pending(client, **overrides):
-    payload = data(**overrides)
-    response = client.post("/auth/register", json=payload)
-    assert response.status_code == 201
-    with SessionLocal() as db:
-        user = db.scalar(select(User).where(User.email == payload["email"].lower()))
-        user.email_verificado = False
-        db.commit()
-    return payload
+from app.services.mailer import MailUnavailable
 
 
 def _capture_delivery(monkeypatch):
     sent = []
-    delivery = lambda email, code: sent.append((email, code))
     monkeypatch.setattr(
         routes,
         "send_email_verification",
-        delivery,
+        lambda email, code: sent.append((email, code)),
     )
     return sent
 
 
-def _request(client, email="maria@example.com", path="solicitar-codigo"):
-    return client.post(f"/auth/email/{path}", json={"email": email})
-
-
-def test_code_generation_hash_and_ten_minute_expiration(client, monkeypatch):
+def _register(client, monkeypatch, **overrides):
     sent = _capture_delivery(monkeypatch)
-    _register_pending(client)
-    assert _request(client).status_code == 200
+    payload = data(**overrides)
+    response = client.post("/auth/register", json=payload)
+    assert response.status_code == 201, response.text
+    assert sent and sent[0][0] == payload["email"].strip().lower()
+    return payload, response, sent
+
+
+def _verify(client, email, code):
+    return client.post(
+        "/auth/email/validar-codigo", json={"email": email, "code": code}
+    )
+
+
+def test_registration_starts_required_confirmation_with_hashed_six_digit_code(
+    client, monkeypatch
+):
+    payload, response, sent = _register(client, monkeypatch)
     code = sent[0][1]
+    body = response.json()
     assert len(code) == 6 and code.isdigit()
+    assert body["email"] == payload["email"]
+    assert body["resend_after_seconds"] == 60
+    assert body["verification_token"]
+    assert body["verification_token"].count(".") != 2
+    assert "access_token" not in body and "token_type" not in body
     with SessionLocal() as db:
-        user = db.scalar(select(User).where(User.email == "maria@example.com"))
+        user = db.scalar(select(User).where(User.email == payload["email"]))
         row = db.scalar(select(EmailVerification))
+        assert user is not None and user.email_verificado is False
         assert row.codigo_hash != code and len(row.codigo_hash) == 64
+        assert row.token_correcao_hash != body["verification_token"]
         assert routes.verification_code_matches(user.id, code, row.codigo_hash)
-        remaining = row.expira_em - datetime.utcnow()
+        remaining = row.expira_em - clock.now_utc_naive()
         assert timedelta(minutes=9, seconds=55) < remaining <= timedelta(minutes=10)
 
 
-def test_optional_email_code_is_single_use_without_blocking_login(client, monkeypatch):
-    sent = _capture_delivery(monkeypatch)
-    _register_pending(client)
-    assert _request(client).status_code == 200
-    code = sent[0][1]
-    before = client.post(
-        "/auth/login",
-        json={"document": "52998224725", "password": "Paciente@123"},
-    )
-    assert before.status_code == 200
-    assert "access_token" in before.json()
-    verified = client.post(
-        "/auth/email/validar-codigo",
-        json={"email": "maria@example.com", "code": code},
-    )
-    assert verified.status_code == 200
-    assert client.post(
-        "/auth/email/validar-codigo",
-        json={"email": "maria@example.com", "code": code},
-    ).status_code == 400
-    assert client.post(
-        "/auth/login",
-        json={"document": "52998224725", "password": "Paciente@123"},
-    ).status_code == 200
+def test_pending_patient_cannot_login_or_receive_jwt_then_can_after_confirmation(
+    client, monkeypatch
+):
+    payload, _, sent = _register(client, monkeypatch)
+    before = login(client)
+    assert before.status_code == 403
+    assert "access_token" not in before.text
+    assert "Confirme seu e-mail" in before.json()["detail"]
+    assert _verify(client, payload["email"], sent[0][1]).status_code == 200
+    after = login(client)
+    assert after.status_code == 200
+    assert "access_token" in after.json()
 
 
-def test_invalid_expired_and_attempt_limit(client, monkeypatch):
-    _capture_delivery(monkeypatch)
-    _register_pending(client)
-    assert _request(client).status_code == 200
+def test_wrong_code_is_rejected_and_five_attempts_block_the_code(client, monkeypatch):
+    payload, _, sent = _register(client, monkeypatch)
+    wrong = "999999" if sent[0][1] != "999999" else "888888"
     for _ in range(routes.MAX_CODE_ATTEMPTS):
-        response = client.post(
-            "/auth/email/validar-codigo",
-            json={"email": "maria@example.com", "code": "999999"},
-        )
+        response = _verify(client, payload["email"], wrong)
         assert response.status_code == 400
     with SessionLocal() as db:
         row = db.scalar(select(EmailVerification))
         assert row.tentativas == routes.MAX_CODE_ATTEMPTS
-        row.tentativas = 0
-        row.expira_em = datetime.utcnow() - timedelta(seconds=1)
-        db.commit()
-    expired = client.post(
-        "/auth/email/validar-codigo",
-        json={"email": "maria@example.com", "code": "999999"},
-    )
-    assert expired.status_code in {400, 429}
-
-
-def test_resend_invalidates_previous_code(client, monkeypatch):
-    sent = _capture_delivery(monkeypatch)
-    _register_pending(client)
-    assert _request(client).status_code == 200
-    first = sent[0][1]
+    blocked = _verify(client, payload["email"], sent[0][1])
+    assert blocked.status_code in {400, 429}
+    assert login(client).status_code == 403
     with SessionLocal() as db:
-        latest = db.scalar(select(EmailVerification))
-        latest.criado_em = datetime.utcnow() - timedelta(seconds=61)
+        row = db.scalar(select(EmailVerification))
+        row.criado_em = clock.now_utc_naive() - timedelta(seconds=61)
         db.commit()
-    assert _request(client, path="reenviar-codigo").status_code == 200
-    second = sent[1][1]
-    assert second != first or len(second) == 6
-    assert client.post(
-        "/auth/email/validar-codigo",
-        json={"email": "maria@example.com", "code": first},
-    ).status_code == 400
-    assert client.post(
-        "/auth/email/validar-codigo",
-        json={"email": "maria@example.com", "code": second},
-    ).status_code == 200
+    resent = client.post(
+        "/auth/email/reenviar-codigo", json={"email": payload["email"]}
+    )
+    assert resent.status_code == 200
+    assert _verify(client, payload["email"], sent[-1][1]).status_code == 200
+
+
+def test_expired_code_is_rejected(client, monkeypatch):
+    payload, _, sent = _register(client, monkeypatch)
+    with SessionLocal() as db:
+        row = db.scalar(select(EmailVerification))
+        row.expira_em = clock.now_utc_naive() - timedelta(seconds=1)
+        db.commit()
+    assert _verify(client, payload["email"], sent[0][1]).status_code == 400
+
+
+def test_used_code_cannot_be_reused(client, monkeypatch):
+    payload, _, sent = _register(client, monkeypatch)
+    assert _verify(client, payload["email"], sent[0][1]).status_code == 200
+    assert _verify(client, payload["email"], sent[0][1]).status_code == 400
+
+
+def test_resend_waits_sixty_seconds_invalidates_previous_code(client, monkeypatch):
+    payload, _, sent = _register(client, monkeypatch)
+    early = client.post(
+        "/auth/email/reenviar-codigo", json={"email": payload["email"]}
+    )
+    assert early.status_code == 429
+    assert int(early.headers["retry-after"]) > 0
+    with SessionLocal() as db:
+        row = db.scalar(select(EmailVerification))
+        row.criado_em = clock.now_utc_naive() - timedelta(seconds=61)
+        db.commit()
+    resent = client.post(
+        "/auth/email/reenviar-codigo", json={"email": payload["email"]}
+    )
+    assert resent.status_code == 200
+    assert resent.json()["resend_after_seconds"] == 60
+    assert len(sent) == 2
+    assert _verify(client, payload["email"], sent[0][1]).status_code == 400
+    assert _verify(client, payload["email"], sent[1][1]).status_code == 200
     with SessionLocal() as db:
         rows = list(db.scalars(select(EmailVerification).order_by(EmailVerification.id)))
         assert len(rows) == 2 and all(row.utilizado for row in rows)
 
 
-def test_registration_ignores_unavailable_smtp_creates_no_code_and_allows_login(
-    client, monkeypatch
-):
-    attempted = []
-
-    def unavailable(*args, **kwargs):
-        attempted.append((args, kwargs))
-        raise AssertionError("O cadastro não deve chamar o transporte SMTP")
-
-    monkeypatch.setattr(routes, "send_email_verification", unavailable)
-    response = client.post("/auth/register", json=data())
-    assert response.status_code == 201
-    body = response.json()
-    assert "code" not in body and "codigo" not in body
-    assert "verification_token" not in body
-    assert "resend_after_seconds" not in body
-    assert body["message"] == "Cadastro concluído. Você já pode entrar."
-    assert attempted == []
-    login = client.post(
-        "/auth/login",
-        json={"document": "52998224725", "password": "Paciente@123"},
-    )
-    assert login.status_code == 200
-    assert "access_token" in login.json()
-    assert client.post(
-        "/auth/login",
-        json={"document": "52998224725", "password": "senha-incorreta"},
-    ).status_code == 401
-    with SessionLocal() as db:
-        user = db.scalar(select(User))
-        row = db.scalar(select(EmailVerification))
-        assert user is not None and user.email_verificado is True
-        assert row is None
-        assert db.scalar(select(func.count(User.id))) == 1
-        assert db.scalar(select(func.count(EmailVerification.id))) == 0
-    panel = client.get(
-        "/patients/me",
-        headers={"Authorization": f"Bearer {login.json()['access_token']}"},
-    )
-    assert panel.status_code == 200
-
-
-def test_code_from_another_account_is_rejected(client, monkeypatch):
-    sent = _capture_delivery(monkeypatch)
-    first = data()
-    second = {
+def test_code_is_bound_to_registration_email(client, monkeypatch):
+    first, _, sent = _register(client, monkeypatch)
+    second_payload = {
         **data(),
         "name": "Joana Oliveira",
         "cpf": "12345678909",
         "email": "joana@example.com",
     }
-    assert client.post("/auth/register", json=first).status_code == 201
-    assert client.post("/auth/register", json=second).status_code == 201
-    with SessionLocal() as db:
-        for user in db.scalars(select(User)):
-            user.email_verificado = False
-        db.commit()
-    assert _request(client, first["email"]).status_code == 200
-    response = client.post(
-        "/auth/email/validar-codigo",
-        json={"email": second["email"], "code": sent[0][1]},
-    )
+    second = client.post("/auth/register", json=second_payload)
+    assert second.status_code == 201
+    response = _verify(client, second_payload["email"], sent[0][1])
     assert response.status_code == 400
     with SessionLocal() as db:
-        joana = db.scalar(select(User).where(User.email == second["email"]))
-        assert joana.email_verificado is False
+        users = list(db.scalars(select(User).order_by(User.id)))
+        assert len(users) == 2 and all(not user.email_verificado for user in users)
+    assert first["email"] != second_payload["email"]
 
 
-def test_duplicate_message_is_clear_without_confirming_email_owner(client, monkeypatch):
-    _capture_delivery(monkeypatch)
-    _register_pending(client)
-    duplicate = client.post(
-        "/auth/register",
-        json={**data(), "cpf": "12345678909"},
-    )
-    assert duplicate.status_code == 409
-    assert duplicate.json()["detail"].startswith("CPF ou e-mail já cadastrado")
+@pytest.mark.parametrize(
+    "field,value",
+    [("cpf", "52998224725"), ("email", "maria@example.com")],
+)
+def test_duplicate_cpf_and_email_remain_blocked(client, monkeypatch, field, value):
+    _register(client, monkeypatch)
+    duplicate = {
+        **data(),
+        "name": "Joana Oliveira",
+        "cpf": "12345678909",
+        "email": "joana@example.com",
+    }
+    duplicate[field] = value
+    response = client.post("/auth/register", json=duplicate)
+    assert response.status_code == 409
     with SessionLocal() as db:
         assert db.scalar(select(func.count(User.id))) == 1
 
 
-def test_unknown_email_has_same_public_message(client, monkeypatch):
-    sent = _capture_delivery(monkeypatch)
-    _register_pending(client)
-    known = _request(client).json()["message"]
-    unknown = _request(client, "desconhecido@example.com").json()["message"]
-    assert known == unknown
-    assert sent[-1] == (None, None)
+def test_opaque_token_corrects_email_and_old_code_is_invalid(client, monkeypatch):
+    payload, response, sent = _register(client, monkeypatch)
+    token = response.json()["verification_token"]
+    corrected = client.post(
+        "/auth/email/corrigir",
+        json={"verification_token": token, "new_email": " Nova@Example.com "},
+    )
+    assert corrected.status_code == 200
+    assert corrected.json()["email"] == "nova@example.com"
+    assert _verify(client, payload["email"], sent[0][1]).status_code == 400
+    requested = client.post(
+        "/auth/email/solicitar-codigo", json={"email": "nova@example.com"}
+    )
+    assert requested.status_code == 200
+    assert sent[-1][0] == "nova@example.com"
+    assert _verify(client, "nova@example.com", sent[-1][1]).status_code == 200
 
 
-def test_migration_preserves_existing_users_and_verified_state(client, monkeypatch):
-    _capture_delivery(monkeypatch)
-    _register_pending(client)
+def test_smtp_failure_rolls_back_registration_and_exposes_no_sensitive_detail(
+    client, monkeypatch, caplog
+):
+    def unavailable(_email, _code):
+        raise MailUnavailable("SMTP_AUTH_FAILED")
+
+    monkeypatch.setattr(routes, "send_email_verification", unavailable)
+    caplog.set_level(logging.INFO)
+    payload = data()
+    response = client.post("/auth/register", json=payload)
+    assert response.status_code == 503
+    assert "Não foi possível enviar" in response.json()["detail"]
     with SessionLocal() as db:
-        user = db.scalar(select(User))
-        user.email_verificado = True
-        original_id = user.id
+        assert db.scalar(select(func.count(User.id))) == 0
+        assert db.scalar(select(func.count(EmailVerification.id))) == 0
+    assert payload["password"] not in caplog.text
+    assert payload["email"] not in caplog.text
+
+
+def test_existing_verified_patient_and_staff_accounts_keep_working(client):
+    with SessionLocal() as db:
+        db.add_all(
+            [
+                User(
+                    nome="Paciente Existente",
+                    cpf="52998224725",
+                    email="existente@example.com",
+                    senha_hash=pwd.hash("Paciente@123"),
+                    perfil="paciente",
+                    ativo=True,
+                    email_verificado=True,
+                ),
+                User(
+                    nome="Recepção Existente",
+                    cpf="12345678909",
+                    email="recepcao@example.com",
+                    senha_hash=pwd.hash("Recepcao@123"),
+                    perfil="recepcao",
+                    ativo=True,
+                    email_verificado=False,
+                ),
+            ]
+        )
         db.commit()
+    assert login(client).status_code == 200
+    assert login(client, "12345678909", "Recepcao@123").status_code == 200
+
+
+def test_migration_preserves_existing_verified_state(client):
+    with SessionLocal() as db:
+        user = User(
+            nome="Paciente Legado",
+            cpf="52998224725",
+            email="legado@example.com",
+            senha_hash=pwd.hash("Paciente@123"),
+            perfil="paciente",
+            email_verificado=True,
+        )
+        db.add(user)
+        db.commit()
+        user_id = user.id
     migrate_database()
     with SessionLocal() as db:
-        user = db.get(User, original_id)
-        assert user is not None and user.email_verificado is True
-
-
-def test_existing_unverified_patient_can_login_without_database_update(client):
-    _register_pending(client)
-    with SessionLocal() as db:
-        user = db.scalar(select(User))
-        original_id = user.id
-        assert user.email_verificado is False
-    response = client.post(
-        "/auth/login",
-        json={"document": "52998224725", "password": "Paciente@123"},
-    )
-    assert response.status_code == 200
-    with SessionLocal() as db:
-        user = db.get(User, original_id)
-        assert user.email_verificado is False
+        assert db.get(User, user_id).email_verificado is True

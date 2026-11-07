@@ -96,9 +96,8 @@ def test_condition_starts_pending_and_patient_cannot_confirm(client):
 
 
 def test_patient_can_withdraw_pending_condition_without_erasing_history(client):
-    assert client.post(
-        "/auth/register",
-        json=_data(priority_conditions=["pcd", "gestante", "lactante"]),
+    assert register(
+        client, priority_conditions=["pcd", "gestante", "lactante"]
     ).status_code == 201
     token = client.post("/auth/login", json={
         "document": "52998224725", "password": "Paciente@123",

@@ -148,7 +148,7 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
                     child: const Text('Salvar e reenviar')),
               ],
             ));
-    controller.dispose();
+    WidgetsBinding.instance.addPostFrameCallback((_) => controller.dispose());
     if (updated == null || !mounted) return;
     setState(() {
       sending = true;
@@ -246,8 +246,12 @@ class _EmailVerificationPageState extends State<EmailVerificationPage> {
                           label: 'Ir para o login',
                           icon: Icons.login,
                           expand: true,
-                          onPressed: () => Navigator.popUntil(
-                              context, (route) => route.isFirst))
+                          onPressed: () => Navigator.pushAndRemoveUntil(
+                              context,
+                              MaterialPageRoute(
+                                  settings: const RouteSettings(name: '/login'),
+                                  builder: (_) => LoginPage(api: widget.api)),
+                              (_) => false))
                     else ...[
                       AppActionButton(
                           label: 'Validar código',

@@ -158,6 +158,9 @@ class EmailVerification(Base):
     expira_em: Mapped[datetime] = mapped_column(DateTime, index=True)
     tentativas: Mapped[int] = mapped_column(default=0)
     utilizado: Mapped[bool] = mapped_column(default=False)
+    token_correcao_hash: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, index=True
+    )
     criado_em: Mapped[datetime] = mapped_column(default=now_utc_naive, index=True)
 
 class RateLimit(Base):

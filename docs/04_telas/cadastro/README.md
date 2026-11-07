@@ -18,12 +18,13 @@
 - **Campos:** nome, CPF, nascimento, parentesco, telefone e e-mail do responsável.
 - **Validações:** responsável maior de idade e dados diferentes dos dados do paciente; responsáveis já existentes podem ser compartilhados de forma consistente.
 - **Frontend:** `frontend/lib/screens/auth_pages.dart` (`ResponsiblePage`).
-- **Próxima:** retorno à tela de login para autenticação com CPF e senha.
+- **Próxima:** confirmação obrigatória do e-mail antes do primeiro login.
 
-## Confirmação de e-mail auxiliar (compatibilidade)
+## Confirmação obrigatória de e-mail
 
-- **Finalidade:** fluxo auxiliar preservado por compatibilidade; não é aberto pelo cadastro e não é requisito para o login.
-- **Campos:** código de seis dígitos; opção de corrigir e-mail.
-- **Ações:** validar, reenviar após o intervalo, corrigir endereço e ir ao login quando esse fluxo for aberto diretamente.
+- **Finalidade:** comprovar a posse do endereço informado. A conta do paciente permanece indisponível e não recebe sessão antes da confirmação.
+- **Campos:** código numérico de seis dígitos, válido por 10 minutos; opção segura de corrigir o e-mail.
+- **Ações:** validar, reenviar depois de 60 segundos, corrigir o endereço e ir ao login após a confirmação.
+- **Segurança:** cada código permite no máximo cinco tentativas, é armazenado somente como hash e deixa de valer quando utilizado ou substituído por reenvio.
 - **Frontend:** `frontend/lib/screens/email_verification_page.dart`.
 - **API:** `POST /auth/email/solicitar-codigo`, `/reenviar-codigo`, `/corrigir` e `/validar-codigo`.

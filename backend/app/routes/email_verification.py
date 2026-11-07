@@ -6,13 +6,11 @@ import logging
 import secrets
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from jose import JWTError, jwt
 from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
 from app.core import clock
-from app.core.config import ALGORITHM, SECRET
 from app.core.security import digest, throttle
 from app.models import EmailVerification, User
 from app.schemas import (
@@ -45,15 +43,37 @@ def hash_verification_code(user_id: int, code: str) -> str:
     return digest(f"email-verification:{user_id}:{code}")
 
 
+def generate_correction_token() -> str:
+    return secrets.token_urlsafe(32)
+
+
+def hash_correction_token(token: str) -> str:
+    return digest(f"email-verification-correction:{token}")
+
+
 def verification_code_matches(user_id: int, code: str, encoded: str) -> bool:
     return hmac.compare_digest(encoded, hash_verification_code(user_id, code))
 
 
-def issue_verification_code(user: User, db: Session) -> None:
+def issue_verification_code(
+    user: User, db: Session, correction_token: str | None = None
+) -> None:
     """Deliver and persist a new code without ever returning or logging it."""
     code = generate_verification_code()
     send_email_verification(user.email, code)
     now = clock.now_utc_naive()
+    correction_token_hash = (
+        hash_correction_token(correction_token) if correction_token else None
+    )
+    if correction_token_hash is None:
+        correction_token_hash = db.scalar(
+            select(EmailVerification.token_correcao_hash)
+            .where(
+                EmailVerification.usuario_id == user.id,
+                EmailVerification.token_correcao_hash.is_not(None),
+            )
+            .order_by(EmailVerification.id.desc())
+        )
     db.execute(
         update(EmailVerification)
         .where(EmailVerification.usuario_id == user.id)
@@ -64,6 +84,7 @@ def issue_verification_code(user: User, db: Session) -> None:
             usuario_id=user.id,
             codigo_hash=hash_verification_code(user.id, code),
             expira_em=now + timedelta(minutes=CODE_TTL_MINUTES),
+            token_correcao_hash=correction_token_hash,
         )
     )
 
@@ -106,7 +127,11 @@ def _request_code(
             1,
             RESEND_WAIT_SECONDS - int((now - latest.criado_em).total_seconds()),
         )
-        return {"message": GENERIC_MESSAGE, "resend_after_seconds": retry_after}
+        raise HTTPException(
+            429,
+            f"Aguarde {retry_after} segundos antes de reenviar o código.",
+            headers={"Retry-After": str(retry_after)},
+        )
 
     try:
         # O mesmo handshake SMTP também é feito para endereços sem conta,
@@ -156,24 +181,24 @@ def correct_email(
     request: Request,
     db: Session = Depends(get_db),
 ):
-    throttle(db, request, "email-verification-correct", payload.verification_token, 5)
-    try:
-        data = jwt.decode(payload.verification_token, SECRET, algorithms=[ALGORITHM])
-        if data.get("purpose") != "email_verification_setup":
-            raise ValueError()
-        user = db.get(User, int(data["sub"]))
-        if (
-            not user
-            or not user.ativo
-            or user.perfil != "paciente"
-            or user.email_verificado
-        ):
-            raise ValueError()
-    except (JWTError, ValueError, KeyError, TypeError):
+    token_hash = hash_correction_token(payload.verification_token)
+    throttle(db, request, "email-verification-correct", token_hash, 5)
+    verification = db.scalar(
+        select(EmailVerification)
+        .where(EmailVerification.token_correcao_hash == token_hash)
+        .order_by(EmailVerification.id.desc())
+    )
+    user = db.get(User, verification.usuario_id) if verification else None
+    if (
+        not user
+        or not user.ativo
+        or user.perfil != "paciente"
+        or user.email_verificado
+    ):
         raise HTTPException(
             401,
             "Não foi possível corrigir o e-mail. Refazer o cadastro pode ser necessário.",
-        ) from None
+        )
     email = str(payload.new_email).strip().lower()
     duplicate = db.scalar(
         select(User.id).where(func.lower(User.email) == email, User.id != user.id)
@@ -203,7 +228,6 @@ def validate_code(
     db: Session = Depends(get_db),
 ):
     email = str(payload.email).strip().lower()
-    throttle(db, request, "email-verification-validate", email, MAX_CODE_ATTEMPTS)
     user = _user_for_email(email, db)
     row = (
         db.scalar(
@@ -213,6 +237,13 @@ def validate_code(
         )
         if user and not user.email_verificado
         else None
+    )
+    throttle(
+        db,
+        request,
+        "email-verification-validate",
+        f"{email}:{row.id if row else 0}",
+        MAX_CODE_ATTEMPTS,
     )
     error = HTTPException(
         400,

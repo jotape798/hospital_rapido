@@ -25,7 +25,12 @@ class RegistrationApi extends ApiService {
   @override
   Future<Map<String, dynamic>> register(Map<String, dynamic> data) async {
     registerCalls++;
-    return {'message': 'Cadastro concluído. Você já pode entrar.'};
+    return {
+      'message': 'Cadastro iniciado. Confirme seu e-mail para entrar.',
+      'email': data['email'],
+      'verification_token': 'opaque-registration-token-with-enough-entropy',
+      'resend_after_seconds': 60,
+    };
   }
 
   @override
@@ -296,7 +301,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('cadastro concluído retorna ao login sem verificação automática',
+  testWidgets('cadastro concluído exige verificação antes do login',
       (tester) async {
     final api = RegistrationApi();
     await tester.pumpWidget(UbsApp(home: RegisterPage(api: api)));
@@ -331,10 +336,9 @@ void main() {
 
     expect(api.registerCalls, 1);
     expect(api.loginCalls, 0);
-    expect(find.text('Acesse sua conta'), findsOneWidget);
-    expect(find.text('Verifique seu e-mail'), findsNothing);
-    expect(find.textContaining('Reenviar código'), findsNothing);
-    expect(find.byKey(const Key('email-verification-code')), findsNothing);
+    expect(find.text('Verifique seu e-mail'), findsOneWidget);
+    expect(find.textContaining('Reenviar código em'), findsOneWidget);
+    expect(find.byKey(const Key('email-verification-code')), findsOneWidget);
   });
 
   testWidgets('recovery_keeps_primary_action_visible', (tester) async {

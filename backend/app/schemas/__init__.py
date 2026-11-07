@@ -19,7 +19,10 @@ class UserResponse(BaseModel):
 
 
 class RegistrationResponse(UserResponse):
-    message: str = "Cadastro concluído. Você já pode entrar."
+    email: EmailStr
+    verification_token: str = Field(min_length=32)
+    resend_after_seconds: int = 60
+    message: str = "Cadastro iniciado. Confirme seu e-mail para entrar."
 
 
 class PatientProfile(BaseModel):

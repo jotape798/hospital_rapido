@@ -311,6 +311,17 @@ def migrate_database() -> None:
             # Toda conta anterior à funcionalidade é tratada como conta de
             # demonstração/legada e continua acessível após a migração.
             connection.execute(text("UPDATE usuarios SET email_verificado = 1"))
+    verification_columns = {
+        column["name"] for column in inspect(engine).get_columns("verificacoes_email")
+    }
+    if "token_correcao_hash" not in verification_columns:
+        with engine.begin() as connection:
+            connection.execute(
+                text(
+                    "ALTER TABLE verificacoes_email "
+                    "ADD COLUMN token_correcao_hash VARCHAR(64)"
+                )
+            )
     with engine.begin() as connection:
         for table, columns in {
             "consultas": {
@@ -586,6 +597,8 @@ def login(payload: LoginRequest, request: Request, db: Session = Depends(get_db)
     matches = pwd.verify(payload.password, user.senha_hash if user else DUMMY_HASH)
     if not user or not matches or not user.ativo:
         raise HTTPException(401, "CPF ou senha inválidos")
+    if user.perfil == "paciente" and not user.email_verificado:
+        raise HTTPException(403, "Confirme seu e-mail antes de entrar.")
     permissions = permissions_for(user)
     return TokenResponse(access_token=make_token(user), user=as_user(user), permissions=permissions)
 
@@ -668,10 +681,7 @@ def register(
         telefone=phone,
         senha_hash=pwd.hash(payload.password),
         perfil="paciente",
-        # A confirmação de e-mail não faz parte do cadastro deste MVP.
-        # Manter o estado verdadeiro evita bloquear o primeiro login sem
-        # alterar contas já existentes no banco.
-        email_verificado=True,
+        email_verificado=False,
         e_prioridade=priority,
         e_menor_idade=minor,
         nome_responsavel=(
@@ -732,14 +742,37 @@ def register(
                     or payload.guardian_relationship,
                 )
             )
+        from app.routes.email_verification import (
+            generate_correction_token,
+            issue_verification_code,
+        )
+
+        verification_token = generate_correction_token()
+        issue_verification_code(user, db, verification_token)
         db.commit()
     except IntegrityError:
         db.rollback()
         raise HTTPException(
             409, "CPF ou e-mail já cadastrado. Entre com sua conta ou use outros dados."
         )
+    except Exception as error:
+        from app.services.mailer import MailUnavailable, delivery_error_message
+
+        db.rollback()
+        if isinstance(error, MailUnavailable):
+            logger.warning(
+                "registration_email_delivery status=failed reason=%s timestamp=%s",
+                error.reason,
+                clock.now_utc().isoformat(),
+            )
+            raise HTTPException(503, delivery_error_message(error.reason)) from None
+        raise
     db.refresh(user)
-    return RegistrationResponse(**as_user(user).model_dump())
+    return RegistrationResponse(
+        **as_user(user).model_dump(),
+        email=user.email,
+        verification_token=verification_token,
+    )
 
 
 @app.get("/auth/me", response_model=UserResponse)

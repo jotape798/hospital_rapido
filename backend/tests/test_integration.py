@@ -56,7 +56,15 @@ def data(**overrides):
 def register(client, **overrides):
     value = data()
     value.update(overrides)
-    return client.post("/auth/register", json=value)
+    response = client.post("/auth/register", json=value)
+    if response.status_code == 201:
+        with SessionLocal() as db:
+            user = db.scalar(
+                select(User).where(func.lower(User.email) == value["email"].lower())
+            )
+            user.email_verificado = True
+            db.commit()
+    return response
 
 
 def login(client, document="52998224725", password="Paciente@123"):

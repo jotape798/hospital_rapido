@@ -310,16 +310,24 @@ class _RegisterPageState extends State<RegisterPage> {
     };
     setState(() => busy = true);
     try {
-      await (widget.api ?? ApiService()).register(data);
+      final result = await (widget.api ?? ApiService()).register(data);
       if (mounted) {
-        allowPop = true;
-        announceImportant(context, 'Cadastro concluído. Faça login para entrar.');
-        Navigator.pushAndRemoveUntil(
+        setState(() => allowPop = true);
+        announceImportant(
+            context, 'Cadastro iniciado. Confirme o código enviado ao seu e-mail.');
+        Navigator.push(
             context,
             MaterialPageRoute(
-                settings: const RouteSettings(name: '/login'),
-                builder: (_) => LoginPage(api: widget.api)),
-            (_) => false);
+                settings: const RouteSettings(name: '/email-verification'),
+                builder: (_) => EmailVerificationPage(
+                      email: result['email']?.toString() ?? email.text.trim(),
+                      sendOnOpen: false,
+                      initialResendSeconds:
+                          (result['resend_after_seconds'] as num?)?.toInt() ?? 60,
+                      verificationToken:
+                          result['verification_token']?.toString(),
+                      api: widget.api,
+                    )));
       }
     } on ApiException catch (e) {
       if (mounted) {
