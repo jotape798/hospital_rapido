@@ -468,10 +468,16 @@ function Preparar-AmbienteBackend {
         if ($SimularFalhaInstalacaoTesteInterno) {
             throw 'A instalação das dependências do backend falhou (simulação controlada).'
         }
-        & $pythonAmbiente -m pip install -r $requirements 2>&1 | Out-Host
-        $codigoInstalacao = $LASTEXITCODE
+        $preferenciaErroAnterior = $ErrorActionPreference
+        $ErrorActionPreference = 'Continue'
+        try {
+            & $pythonAmbiente -m pip --disable-pip-version-check install -r $requirements 2>&1 | Out-Host
+            $codigoInstalacao = $LASTEXITCODE
+        } finally {
+            $ErrorActionPreference = $preferenciaErroAnterior
+        }
         if ($codigoInstalacao -ne 0) {
-            throw 'A instalação das dependências do backend falhou: python -m pip install -r requirements.txt.'
+            throw "A instalação das dependências do backend falhou (código de saída $codigoInstalacao): python -m pip --disable-pip-version-check install -r requirements.txt."
         }
         Set-Content -LiteralPath $marcaRequirements -Value (Obter-HashArquivo $requirements) -Encoding ASCII
     }
