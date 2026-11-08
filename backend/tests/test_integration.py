@@ -1095,7 +1095,16 @@ def test_admin_manages_nursing_schedule_and_rejects_non_professional_blocks(clie
     assert invalid_block.status_code == 422
 
 
-def test_absence_details_specialties_and_schedule_rules(client):
+def test_absence_details_specialties_and_schedule_rules(client, monkeypatch):
+    from app.core import clock as ubs_clock
+
+    fixed_utc = datetime(2026, 10, 21, 15, 0, tzinfo=ubs_clock.UTC)
+    fixed_ubs_time_aware = fixed_utc.astimezone(ubs_clock.SAO_PAULO)
+    assert fixed_ubs_time_aware == datetime(
+        2026, 10, 21, 12, 0, tzinfo=ubs_clock.SAO_PAULO
+    )
+    fixed_ubs_time = fixed_ubs_time_aware.replace(tzinfo=None)
+
     headers, admin_id = _admin_headers()
     register(client)
     with SessionLocal() as db:
@@ -1110,28 +1119,39 @@ def test_absence_details_specialties_and_schedule_rules(client):
             registro_profissional="SEM-REGISTRO-TESTE", especialidade_id=specialty.id))
         patient = db.scalar(select(User).where(User.perfil == "paciente"))
         overdue = Appointment(paciente_id=patient.id, medico_id=professional.id,
-            especialidade=specialty.nome, data_horario=datetime.now() - timedelta(minutes=16),
+            especialidade=specialty.nome, data_horario=fixed_ubs_time - timedelta(minutes=16),
+            status="agendado")
+        within_tolerance = Appointment(paciente_id=patient.id, medico_id=professional.id,
+            especialidade=specialty.nome,
+            data_horario=fixed_ubs_time - timedelta(minutes=14, seconds=59),
             status="agendado")
         manual = Appointment(paciente_id=patient.id, medico_id=professional.id,
-            especialidade=specialty.nome, data_horario=datetime.now() + timedelta(hours=1),
+            especialidade=specialty.nome,
+            data_horario=fixed_ubs_time + timedelta(hours=1),
             status="agendado")
-        db.add_all([overdue, manual]); db.commit()
-        overdue_id, manual_id = overdue.id, manual.id
+        db.add_all([overdue, within_tolerance, manual]); db.commit()
+        overdue_id, within_tolerance_id, manual_id = (
+            overdue.id, within_tolerance.id, manual.id
+        )
         professional_id, specialty_id = professional.id, specialty.id
         reception_headers = {"Authorization": "Bearer " + make_token(reception)}
+    patient_headers = header(client)
 
     # A leitura operacional aplica a regra automática de atraso superior a 15 minutos.
+    monkeypatch.setattr(ubs_clock, "now_utc", lambda: fixed_utc)
+    assert ubs_clock.now_sao_paulo_naive() == fixed_ubs_time
     agenda = client.get("/admin/appointments", headers=reception_headers)
     assert agenda.status_code == 200
     with SessionLocal() as db:
         assert db.get(Appointment, overdue_id).status == "falta"
+        assert db.get(Appointment, within_tolerance_id).status == "agendado"
         assert db.get(Appointment, manual_id).status == "agendado"
 
     assert client.post(f"/admin/appointments/{manual_id}/absence",
                        headers=reception_headers).status_code == 409
     assert client.get(f"/admin/appointments/{manual_id}",
                       headers=reception_headers).json()["patient_document"].startswith("***")
-    assert client.get(f"/admin/appointments/{manual_id}", headers=header(client)).status_code == 403
+    assert client.get(f"/admin/appointments/{manual_id}", headers=patient_headers).status_code == 403
 
     assert client.post("/admin/specialties", headers=headers,
                        json={"name": "Dermatologia Fictícia"}).status_code == 201
