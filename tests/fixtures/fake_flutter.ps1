@@ -3,6 +3,9 @@ $cenario = $env:UBS_LAUNCHER_TEST_SCENARIO
 $porta = if ($env:UBS_LAUNCHER_TEST_FRONTEND_PORT) {
     [int]$env:UBS_LAUNCHER_TEST_FRONTEND_PORT
 } else { 8080 }
+if ($env:UBS_LAUNCHER_TEST_FRONTEND_PID_FILE) {
+    Set-Content -LiteralPath $env:UBS_LAUNCHER_TEST_FRONTEND_PID_FILE -Value $PID -Encoding ASCII
+}
 
 if ($acao -eq 'pub get') {
     if ($cenario -eq 'pub-get-failure') {
@@ -13,7 +16,7 @@ if ($acao -eq 'pub get') {
     exit 0
 }
 
-if ($acao -notmatch '^run -d (chrome|edge) ') {
+if ($acao -notmatch '^run -d web-server --web-hostname 127\.0\.0\.1 --web-port \d+ ') {
     [Console]::Error.WriteLine("comando Flutter inválido: $acao")
     exit 44
 }

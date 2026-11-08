@@ -9,6 +9,7 @@ param(
     [switch]$ModoTesteInterno,
     [string]$FlutterTesteInterno,
     [string]$BackendTesteInterno,
+    [string]$NavegadorTesteInterno,
     [ValidateRange(1, 600)]
     [int]$TimeoutInicializacaoSegundos = 120,
     [ValidateRange(1, 300)]
@@ -355,8 +356,17 @@ function Parar-ProcessoCriado {
     param([System.Diagnostics.Process]$Processo)
     if (-not $Processo) { return }
     $ids = @(Obter-Descendentes -IdPai $Processo.Id) + @($Processo.Id)
-    foreach ($idProcesso in ($ids | Select-Object -Unique)) {
-        Stop-Process -Id $idProcesso -Force -ErrorAction SilentlyContinue
+    $idsUnicos = @($ids | Select-Object -Unique)
+    $processos = @(
+        foreach ($idProcesso in $idsUnicos) {
+            Get-Process -Id $idProcesso -ErrorAction SilentlyContinue
+        }
+    )
+    foreach ($processoCriado in $processos) {
+        Stop-Process -InputObject $processoCriado -Force -ErrorAction SilentlyContinue
+    }
+    foreach ($processoCriado in $processos) {
+        try { $null = $processoCriado.WaitForExit(3000) } catch { }
     }
 }
 
@@ -388,10 +398,80 @@ function Testar-JanelaWindows {
     } catch { return $false }
 }
 
-function Verificar-PortaBackendDisponivel {
-    $conexao = Get-NetTCPConnection -LocalPort $portaBackend -State Listen -ErrorAction SilentlyContinue |
+function Testar-PortaLocalLivre {
+    param([Parameter(Mandatory = $true)][int]$Porta)
+    $listener = [System.Net.Sockets.TcpListener]::new(
+        [System.Net.IPAddress]::Loopback, $Porta
+    )
+    try {
+        $listener.Start()
+        return $true
+    } catch [System.Net.Sockets.SocketException] {
+        return $false
+    } finally {
+        try { $listener.Stop() } catch { }
+    }
+}
+
+function Verificar-PortaFrontendDisponivel {
+    if (-not (Testar-PortaLocalLivre -Porta $portaFrontend)) {
+        throw "A porta $portaFrontend do frontend está ocupada. Encerre o processo que usa essa porta e tente novamente."
+    }
+}
+
+function Obter-ExecutavelNavegador {
+    if ($ModoTesteInterno -and $NavegadorTesteInterno) {
+        return (Resolve-Path -LiteralPath $NavegadorTesteInterno).Path
+    }
+
+    $nomeExecutavel = if ($Dispositivo -eq 'chrome') { 'chrome.exe' } else { 'msedge.exe' }
+    $comando = Get-Command $nomeExecutavel -CommandType Application -ErrorAction SilentlyContinue |
         Select-Object -First 1
-    if (-not $conexao) { return 'Livre' }
+    if ($comando) { return $comando.Source }
+
+    $candidatos = if ($Dispositivo -eq 'chrome') {
+        @(
+            (Join-Path $env:ProgramFiles 'Google\Chrome\Application\chrome.exe'),
+            (Join-Path ${env:ProgramFiles(x86)} 'Google\Chrome\Application\chrome.exe'),
+            (Join-Path $env:LOCALAPPDATA 'Google\Chrome\Application\chrome.exe')
+        )
+    } else {
+        @(
+            (Join-Path ${env:ProgramFiles(x86)} 'Microsoft\Edge\Application\msedge.exe'),
+            (Join-Path $env:ProgramFiles 'Microsoft\Edge\Application\msedge.exe')
+        )
+    }
+    foreach ($candidato in $candidatos) {
+        if ($candidato -and (Test-Path -LiteralPath $candidato)) { return $candidato }
+    }
+    throw "O navegador $Dispositivo não foi encontrado. Instale-o ou use outro dispositivo."
+}
+
+function Abrir-FrontendNoNavegador {
+    if ($ModoTesteInterno -and -not $NavegadorTesteInterno) {
+        Escrever-Ok "Abertura do navegador $Dispositivo simulada no teste."
+        return
+    }
+    $navegador = Obter-ExecutavelNavegador
+    $parametros = @{
+        FilePath = $navegador
+        ArgumentList = @($urlFrontend)
+        WorkingDirectory = $pastaFrontend
+    }
+    if ([System.IO.Path]::GetExtension($navegador) -ieq '.ps1') {
+        $parametros.FilePath = 'powershell.exe'
+        $parametros.ArgumentList = @(
+            '-NoLogo', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File',
+            $navegador, $urlFrontend
+        )
+        $parametros.WindowStyle = 'Hidden'
+    }
+    Start-Process @parametros | Out-Null
+    Escrever-Ok "Navegador $Dispositivo aberto separadamente."
+}
+
+function Verificar-PortaBackendDisponivel {
+    if (Testar-PortaLocalLivre -Porta $portaBackend) { return 'Livre' }
     if (Testar-Api) { return 'BackendSaudavel' }
     throw "A porta $portaBackend está ocupada por um processo que não responde como o backend da UBS Rápida."
 }
@@ -622,13 +702,15 @@ try {
             -TimeoutSegundos $TimeoutInicializacaoSegundos `
             -EstabilidadeSegundos $EstabilidadeFrontendSegundos
     } else {
-        Escrever-Aguarde "Iniciando o frontend Flutter no $Dispositivo..."
+        Verificar-PortaFrontendDisponivel
+        Escrever-Aguarde 'Iniciando o servidor Web do frontend Flutter...'
         $argumentosFlutter = @(
-            'run', '-d', $Dispositivo, '--web-port', "$portaFrontend",
+            'run', '-d', 'web-server', '--web-hostname', '127.0.0.1',
+            '--web-port', "$portaFrontend",
             "--dart-define=API_BASE_URL=$urlBackend"
         )
         $frontend = Iniciar-ProcessoMonitorado -Arquivo $flutter -Argumentos $argumentosFlutter `
-            -Diretorio $pastaFrontend -NomeLog "frontend-$Dispositivo$sufixoLogTeste" -JanelaNormal
+            -Diretorio $pastaFrontend -NomeLog "frontend-web-server$sufixoLogTeste"
         $resultadoFrontend = Esperar-ProcessoECondicao -Processo $frontend.Processo `
             -Condicao { Testar-FrontendWeb } `
             -TimeoutSegundos $TimeoutInicializacaoSegundos `
@@ -647,14 +729,23 @@ try {
     if (-not (Testar-ProcessoAtivo $frontend.Processo)) {
         throw 'O frontend Flutter encerrou imediatamente após a verificação de prontidão.'
     }
+    if (-not (Testar-Api)) {
+        throw 'A API deixou de responder antes da conclusão da inicialização.'
+    }
+    if ($Dispositivo -ne 'windows' -and -not (Testar-FrontendWeb)) {
+        throw 'O frontend Web deixou de responder antes da conclusão da inicialização.'
+    }
 
     Escrever-Ok 'Frontend Flutter disponível.'
+    if ($Dispositivo -ne 'windows') {
+        Abrir-FrontendNoNavegador
+    }
     Escrever-Ok 'Sistema iniciado com sucesso.'
     Write-Host "Backend: $urlBackend/docs"
     if ($Dispositivo -eq 'windows') {
         Write-Host 'Frontend Flutter: aplicativo Windows iniciado'
     } else {
-        Write-Host "Frontend Flutter: $urlFrontend ($Dispositivo)"
+        Write-Host "Frontend Flutter: $urlFrontend (servidor Web; navegador $Dispositivo separado)"
     }
     $script:inicializacaoConcluida = $true
 
@@ -662,7 +753,9 @@ try {
         Parar-ProcessosCriados
     } elseif (-not $SemPausa) {
         Write-Host ''
-        Read-Host 'Mantenha o backend e o frontend abertos. Pressione ENTER para fechar somente este resumo'
+        Read-Host 'O sistema está em execução. Pressione ENTER para encerrar backend e frontend'
+        Parar-ProcessosCriados
+        Escrever-Ok 'Sistema encerrado e processos liberados.'
     }
     exit 0
 } catch {

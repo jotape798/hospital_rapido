@@ -2,6 +2,9 @@ $cenario = $env:UBS_LAUNCHER_TEST_SCENARIO
 $porta = if ($env:UBS_LAUNCHER_TEST_BACKEND_PORT) {
     [int]$env:UBS_LAUNCHER_TEST_BACKEND_PORT
 } else { 8000 }
+if ($env:UBS_LAUNCHER_TEST_BACKEND_PID_FILE) {
+    Set-Content -LiteralPath $env:UBS_LAUNCHER_TEST_BACKEND_PID_FILE -Value $PID -Encoding ASCII
+}
 if ($cenario -eq 'backend-failure') {
     [Console]::Error.WriteLine('falha simulada do backend')
     exit 51
