@@ -778,12 +778,26 @@ class _StaffDashboardState extends State<StaffDashboard> {
                           const {'em_espera', 'em_triagem'}
                               .contains(item.status))
                         AppActionButton(
-                            onPressed: working ? null : () => _classify(item),
+                            key: Key('triage-action-${item.id}'),
+                            onPressed: working || !item.triageActionAllowed
+                                ? null
+                                : () => _classify(item),
                             icon: Icons.flag_outlined,
                             semanticLabel: 'Concluir triagem',
                             label: item.status == 'em_triagem'
                                 ? 'Reclassificar risco'
                                 : 'Classificar risco'),
+                      if (isNursing &&
+                          const {'em_espera', 'em_triagem'}
+                              .contains(item.status) &&
+                          !item.triageActionAllowed)
+                        SizedBox(
+                            width: 230,
+                            child: Text(
+                                item.triageBlockReason ??
+                                    'Outro paciente está à frente na fila.',
+                                key: Key('triage-order-message-${item.id}'),
+                                style: Theme.of(context).textTheme.bodySmall)),
                       if (isProfessional && item.status == 'em_triagem')
                         OutlinedButton.icon(
                             onPressed: working ? null : () => _call(item),

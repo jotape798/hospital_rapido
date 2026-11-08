@@ -144,6 +144,8 @@ class AdminAppointment {
         triageObservation = v['triage_observation'] as String?,
         triageComplaint = v['triage_complaint'] as String?,
         vitalSigns = v['vital_signs'] as String?,
+        triageActionAllowed = v['triage_action_allowed'] as bool? ?? true,
+        triageBlockReason = v['triage_block_reason'] as String?,
         arrivedAt = v['arrived_at'] == null
             ? null
             : DateTime.parse(v['arrived_at'] as String),
@@ -178,6 +180,8 @@ class AdminAppointment {
       legalPriority,
       priorityReason;
   final String? risk, riskLabel, triageObservation, triageComplaint, vitalSigns;
+  final bool triageActionAllowed;
+  final String? triageBlockReason;
 }
 
 class Appointment {

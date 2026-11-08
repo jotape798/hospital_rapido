@@ -167,6 +167,27 @@ def _filtered_day_query(
     return query
 
 
+def _ordered_nursing_rows(db: Session, day: date) -> list[Appointment]:
+    """Retorna a fila clínica completa na ordem oficial de atendimento."""
+    start, end = _day_limits(day)
+    rows = list(
+        db.scalars(
+            select(Appointment).where(
+                Appointment.data_horario >= start,
+                Appointment.data_horario < end,
+                Appointment.chegada_em.is_not(None),
+                Appointment.status.in_(["em_espera", "em_triagem"]),
+            )
+        ).unique()
+    )
+    return sorted(rows, key=queue_sort_key)
+
+
+def _initial_triage_rows(rows: list[Appointment]) -> list[Appointment]:
+    """Mantém na fila de início somente quem ainda aguarda a primeira triagem."""
+    return [row for row in rows if row.status == "em_espera"]
+
+
 @router.get("/recepcao/resumo")
 def reception_summary(
     day: date = Query(default_factory=clock.today_sao_paulo),
@@ -353,11 +374,19 @@ def nursing_queue(
     db: Session = Depends(get_db),
 ):
     _authorized_nurse(actor, db)
-    query = _filtered_day_query(day, specialty, None, status, None).where(
-        Appointment.chegada_em.is_not(None),
-        Appointment.status.in_(["em_espera", "em_triagem"]),
-    )
-    rows = list(db.scalars(query).unique())
+    ordered_rows = _ordered_nursing_rows(db, day)
+    initial_rows = _initial_triage_rows(ordered_rows)
+    first_id = initial_rows[0].id if initial_rows else None
+    rows = ordered_rows
+    if specialty:
+        canonical = canonical_specialty_name(specialty).casefold()
+        rows = [
+            row
+            for row in rows
+            if canonical_specialty_name(row.especialidade).casefold() == canonical
+        ]
+    if status:
+        rows = [row for row in rows if row.status == status]
     if risk:
         if risk not in RISK_LABELS:
             raise HTTPException(422, "Classificação de risco inválida")
@@ -369,7 +398,16 @@ def nursing_queue(
                 filtered.append(row)
         rows = filtered
 
-    return [_appointment_payload(db, row) for row in sorted(rows, key=queue_sort_key)]
+    result = []
+    for row in rows:
+        payload = _appointment_payload(db, row)
+        allowed = row.status == "em_triagem" or row.id == first_id
+        payload["triage_action_allowed"] = allowed
+        payload["triage_block_reason"] = (
+            None if allowed else "Outro paciente está à frente na fila."
+        )
+        result.append(payload)
+    return result
 
 
 @router.get("/enfermagem/agendamentos/{appointment_id}")
@@ -398,6 +436,11 @@ def classify_risk(
         raise HTTPException(409, "Não é possível classificar risco sem check-in")
     if row.status not in {"em_espera", "em_triagem"}:
         raise HTTPException(409, "Classificação incompatível com o status atual")
+    if row.status == "em_espera":
+        ordered_rows = _ordered_nursing_rows(db, row.data_horario.date())
+        initial_rows = _initial_triage_rows(ordered_rows)
+        if not initial_rows or initial_rows[0].id != row.id:
+            raise HTTPException(409, "Outro paciente está à frente na fila de triagem")
     now = clock.now_sao_paulo_naive()
     record = _risk_record(db, row.id)
     if record:

@@ -8,11 +8,14 @@ import 'package:ubs_saude/models/api_models.dart';
 import 'package:ubs_saude/services/api_service.dart';
 
 AdminAppointment fakeAppointment(String status,
-        {String? risk,
+        {int id = 22,
+        String? risk,
         String? riskLabel,
-        String patient = 'Paciente Fictício'}) =>
+        String patient = 'Paciente Fictício',
+        bool triageActionAllowed = true,
+        String? triageBlockReason}) =>
     AdminAppointment.fromJson({
-      'id': 22,
+      'id': id,
       'scheduled_at': DateTime.now()
           .copyWith(hour: 10, minute: 0, second: 0, millisecond: 0)
           .toIso8601String(),
@@ -26,6 +29,8 @@ AdminAppointment fakeAppointment(String status,
       'priority_reason': 'Sem prioridade legal',
       'risk_classification': risk,
       'risk_label': riskLabel,
+      'triage_action_allowed': triageActionAllowed,
+      'triage_block_reason': triageBlockReason,
       'arrived_at':
           status == 'agendado' ? null : DateTime.now().toIso8601String(),
     });
@@ -35,16 +40,19 @@ class FakeStaffApi extends ApiService {
       {this.patientName = 'Paciente Fictício',
       this.withPendingPcd = false,
       this.failReceptionLoad = false,
-      this.failNursingLoad = false});
+      this.failNursingLoad = false,
+      this.withBlockedTriage = false});
   final bool professional;
   final String patientName;
   final bool withPendingPcd;
   bool failReceptionLoad;
   bool failNursingLoad;
+  final bool withBlockedTriage;
   int checkIns = 0;
   int classifications = 0;
   int calls = 0;
   int priorityValidationCalls = 0;
+  bool initialTriageCompleted = false;
   String receptionStatus = 'agendado';
   Completer<void>? nextReceptionRequest;
   DateTime? lastDay;
@@ -112,8 +120,16 @@ class FakeStaffApi extends ApiService {
     lastRisk = risk;
     if (specialty != null || status != null || risk != null) return [];
     return [
-      fakeAppointment('em_espera',
-          risk: 'baixo', riskLabel: 'Baixo', patient: patientName)
+      fakeAppointment(initialTriageCompleted ? 'em_triagem' : 'em_espera',
+          risk: 'baixo', riskLabel: 'Baixo', patient: patientName),
+      if (withBlockedTriage)
+        fakeAppointment('em_espera',
+            id: 23,
+            patient: 'Paciente em segundo lugar',
+            triageActionAllowed: initialTriageCompleted,
+            triageBlockReason: initialTriageCompleted
+                ? null
+                : 'Outro paciente está à frente na fila.'),
     ];
   }
 
@@ -142,6 +158,7 @@ class FakeStaffApi extends ApiService {
   Future<void> classifyRisk(int id, String level, String complaint,
       String vitalSigns, String? observation) async {
     classifications++;
+    if (id == 22) initialTriageCompleted = true;
   }
 
   @override
@@ -712,6 +729,91 @@ void main() {
     expect(api.classifications, 1);
     semantics.dispose();
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('enfermagem habilita somente o primeiro paciente da fila',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    ApiService.session = const Session(
+        'token', 'Enfermagem Fictícia', 'enfermagem', ['triage:write']);
+    final api = FakeStaffApi(true, withBlockedTriage: true);
+    await tester.pumpWidget(UbsApp(home: StaffDashboard(api: api)));
+    await tester.pumpAndSettle();
+
+    final firstAction = find.byKey(const Key('triage-action-22'));
+    final secondAction = find.byKey(const Key('triage-action-23'));
+    expect(firstAction, findsOneWidget);
+    expect(secondAction, findsOneWidget);
+    expect(
+        tester
+            .widget<FilledButton>(find.descendant(
+                of: firstAction, matching: find.byType(FilledButton)))
+            .onPressed,
+        isNotNull);
+    expect(
+        tester
+            .widget<FilledButton>(find.descendant(
+                of: secondAction, matching: find.byType(FilledButton)))
+            .onPressed,
+        isNull);
+    expect(find.text('Outro paciente está à frente na fila.'), findsOneWidget);
+
+    await tester.ensureVisible(firstAction);
+    await tester.tap(firstAction);
+    await tester.pumpAndSettle();
+    expect(find.text('Classificação de risco manual'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('risk-option-baixo')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.byKey(const Key('triage-complaint')), 'Queixa fictícia.');
+    await tester.enterText(
+        find.byKey(const Key('triage-vital-signs')), 'PA fictícia 120/80.');
+    await tester.tap(find.text('Salvar classificação'));
+    await tester.pumpAndSettle();
+
+    expect(api.classifications, 1);
+    expect(
+        tester
+            .widget<FilledButton>(find.descendant(
+                of: find.byKey(const Key('triage-action-23')),
+                matching: find.byType(FilledButton)))
+            .onPressed,
+        isNotNull);
+    expect(find.byKey(const Key('triage-order-message-23')), findsNothing);
+    expect(find.text('Reclassificar risco'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('bloqueio da ordem da triagem permanece responsivo',
+      (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    ApiService.session = const Session(
+        'token', 'Enfermagem Fictícia', 'enfermagem', ['triage:write']);
+
+    for (final size in const [
+      Size(390, 900),
+      Size(768, 900),
+      Size(1366, 900),
+    ]) {
+      await tester.binding.setSurfaceSize(size);
+      await tester.pumpWidget(UbsApp(
+          key: ValueKey(size),
+          home:
+              StaffDashboard(api: FakeStaffApi(true, withBlockedTriage: true))));
+      await tester.pumpAndSettle();
+
+      final message = find.byKey(const Key('triage-order-message-23'));
+      await tester.ensureVisible(message);
+      await tester.pumpAndSettle();
+      final rect = tester.getRect(message);
+      expect(rect.left, greaterThanOrEqualTo(0));
+      expect(rect.right, lessThanOrEqualTo(size.width));
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump();
+    }
   });
 
   testWidgets('profissional chama e atende sem classificar risco',
