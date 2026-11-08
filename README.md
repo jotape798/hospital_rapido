@@ -5,7 +5,7 @@ Sistema acadêmico (MVP) criado para reduzir filas presenciais de agendamento em
 Todos os dados de demonstração são fictícios. O projeto não substitui sistemas oficiais de saúde e não é um prontuário eletrônico.
 
 - **Repositório:** https://github.com/Victoraquino135/hospital_rapido
-- **Versão final revisada:** 09/10/2026
+- **Última revisão:** 08/11/2026
 - **Protótipo externo:** nenhum link de protótipo foi localizado no projeto; a implementação Flutter é a referência visual atual.
 
 ## Tecnologias
