@@ -43,7 +43,15 @@ Todos os nomes e dados dessas contas são fictícios e destinados somente à dem
 
 ## Como executar
 
-Pré-requisitos no Windows: Python 3 e Flutter com suporte a desktop Windows. O iniciador cria o ambiente virtual do backend e instala as dependências quando necessário.
+### Pré-requisitos no Windows
+
+- Flutter instalado, com o comando `flutter` disponível no `PATH`;
+- Python 3.10 ou superior instalado;
+- Modo de desenvolvedor do Windows ativado.
+
+O Modo de desenvolvedor é um requisito do ambiente Flutter quando plugins precisam criar links simbólicos; não é uma falha funcional do UBS Rápida. Para ativá-lo, abra **Configurações → Privacidade e segurança → Para desenvolvedores** e habilite **Modo de Desenvolvedor**. Em versões anteriores do Windows, a opção pode estar em **Configurações → Atualização e Segurança → Para desenvolvedores**.
+
+Quando esse modo está desativado, o Flutter pode interromper a preparação com uma mensagem como `Building with plugins requires symlink support` ou solicitar a ativação das configurações para desenvolvedores. Depois de ativá-lo, execute `INICIAR_TUDO.bat` novamente. O iniciador cria o ambiente virtual do backend e instala as dependências quando necessário.
 
 No Windows, execute o único iniciador oficial na raiz:
 
@@ -55,7 +63,7 @@ O iniciador localiza o projeto, usa ou cria `backend\venv`, sincroniza as depend
 
 Ao abrir `INICIAR_TUDO.bat` com duplo clique, o iniciador atualiza as dependências necessárias e recompila o aplicativo Windows antes de abrir, garantindo que a versão exibida contenha as alterações atuais.
 
-Para abrir no navegador, use `INICIAR_TUDO.bat -Dispositivo chrome` ou `INICIAR_TUDO.bat -Dispositivo edge`.
+Para abrir no navegador, use `INICIAR_TUDO.bat -Dispositivo chrome` ou `INICIAR_TUDO.bat -Dispositivo edge`. Nesses modos, o frontend permanece servido em `http://127.0.0.1:8080`, mesmo que a janela do navegador seja fechada, e o mesmo endereço pode ser aberto novamente enquanto o iniciador estiver em execução.
 
 Para forçar a restauração das dependências e a recompilação da interface:
 
