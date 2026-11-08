@@ -215,10 +215,28 @@ def reception_details(
     return _appointment_payload(db, _appointment_or_404(db, appointment_id))
 
 
-@router.patch("/recepcao/agendamentos/{appointment_id}/check-in")
+@router.patch(
+    "/recepcao/agendamentos/{appointment_id}/check-in",
+    summary="Registrar check-in presencial",
+    description=(
+        "Confirma a chegada presencial e move a consulta agendada para a fila de espera. "
+        "Perfis autorizados: Recepção e Administrador. A consulta deve existir, estar "
+        "agendada para o dia atual da UBS e ainda não possuir check-in."
+    ),
+    responses={
+        401: {"description": "Token de autenticação ausente ou inválido."},
+        403: {"description": "Perfil sem autorização para registrar check-in."},
+        404: {"description": "Consulta inexistente."},
+        409: {
+            "description": (
+                "Consulta fora do dia, em estado incompatível ou com check-in já realizado."
+            )
+        },
+    },
+)
 def reception_check_in(
     appointment_id: int,
-    actor: User = Depends(require_roles("recepcao")),
+    actor: User = Depends(require_roles("recepcao", "admin")),
     db: Session = Depends(get_db),
 ):
     row = _appointment_or_404(db, appointment_id)

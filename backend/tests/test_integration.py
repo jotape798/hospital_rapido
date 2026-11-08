@@ -1006,10 +1006,10 @@ def test_checkin_duplicate_cancelled_and_grid_overlap(client):
             especialidade=specialty.nome, data_horario=datetime.now() + timedelta(minutes=30), status="cancelado")
         db.add_all([appointment, cancelled]); db.commit()
         appointment_id, cancelled_id, professional_id, specialty_id = appointment.id, cancelled.id, professional.id, specialty.id
-    assert client.post(f"/admin/appointments/{appointment_id}/check-in", headers=headers).status_code == 200
+    assert client.patch(f"/recepcao/agendamentos/{appointment_id}/check-in", headers=headers).status_code == 200
     assert client.put(f"/appointments/{appointment_id}/status", headers=headers).status_code == 404
-    assert client.post(f"/admin/appointments/{appointment_id}/check-in", headers=headers).status_code == 409
-    assert client.post(f"/admin/appointments/{cancelled_id}/check-in", headers=headers).status_code == 409
+    assert client.patch(f"/recepcao/agendamentos/{appointment_id}/check-in", headers=headers).status_code == 409
+    assert client.patch(f"/recepcao/agendamentos/{cancelled_id}/check-in", headers=headers).status_code == 409
     searched = client.get("/admin/appointments", headers=headers, params={
         "day": datetime.now().date().isoformat(),
         "patient": datetime.now().strftime("%H:%M"),

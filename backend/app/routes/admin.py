@@ -15,7 +15,7 @@ from app.core.risk import RISK_LEVELS
 from app.core.specialty import GENERAL_SPECIALTY, canonical_specialty_name, specialty_key
 from app.core.security import canonical_role, pwd, require_roles
 from app.models import (
-    Appointment, AppointmentStatusHistory, AuditLog, ProfessionalProfile,
+    Appointment, AuditLog, ProfessionalProfile,
     ProfessionalSchedule, PriorityCondition, PriorityConditionHistory,
     ScheduleBlock, ScheduleGrid, Specialty, User,
 )
@@ -480,21 +480,6 @@ def agenda(day: date = Query(default_factory=clock.today_sao_paulo), specialty: 
              "professional": x.medico.nome, "professional_id": x.medico_id, "status": x.status,
              "legal_priority": legal_priority_code(x.paciente), "risk_classification": x.classificacao_risco,
              "arrived_at": x.chegada_em} for x in db.scalars(query.order_by(Appointment.data_horario)).unique()]
-
-
-@router.post("/appointments/{appointment_id}/check-in")
-def check_in(appointment_id: int, actor: User = Depends(require_roles("admin", "recepcao")), db: Session = Depends(get_db)):
-    row = db.get(Appointment, appointment_id)
-    if not row: raise HTTPException(404, "Agendamento não encontrado")
-    if row.status == "cancelado": raise HTTPException(409, "Consulta cancelada não pode receber check-in")
-    if row.status != "agendado" or row.chegada_em: raise HTTPException(409, "A chegada já foi confirmada ou o status é incompatível")
-    if row.data_horario.date() != clock.today_sao_paulo(): raise HTTPException(409, "A chegada só pode ser confirmada no dia da consulta")
-    previous = row.status; row.status = "em_espera"; row.chegada_em = clock.now_sao_paulo_naive(); row.chegada_por = actor.id
-    db.add(AppointmentStatusHistory(consulta_id=row.id, status_anterior=previous,
-                                    status_novo=row.status, alterado_por=actor.id))
-    audit(db, actor, "chegada_confirmada", "consulta", row.id)
-    db.commit()
-    return {"id": row.id, "status": row.status, "arrived_at": row.chegada_em}
 
 
 @router.post("/appointments/{appointment_id}/absence")

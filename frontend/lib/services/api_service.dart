@@ -285,7 +285,7 @@ class ApiService {
   }
 
   Future<void> checkIn(int id) async {
-    await _post('/admin/appointments/$id/check-in', {});
+    await _request('PATCH', '/recepcao/agendamentos/$id/check-in', {});
   }
 
   Future<void> registerAbsence(int id) async {

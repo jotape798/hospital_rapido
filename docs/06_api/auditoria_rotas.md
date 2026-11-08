@@ -24,7 +24,7 @@ Levantamento realizado no backend, no Flutter, nos testes e na documentação an
 | `POST /appointments` | `backend/app/main.py` | `create_appointment` | Agendamento Flutter e testes | Oficial | Mantida |
 | `POST /appointments/{id}/cancel` | `backend/app/main.py` | `cancel` | Flutter e testes | Oficial | Mantida; alias `PUT` removido |
 | `POST /appointments/{id}/reschedule` | `backend/app/main.py` | `reschedule` | Flutter e testes | Oficial | Mantida; alias `PUT` removido |
-| `PATCH /recepcao/agendamentos/{id}/check-in` | `backend/app/routes/staff.py` | `reception_check_in` | Painel da recepção e testes | Oficial | Mantida |
+| `PATCH /recepcao/agendamentos/{id}/check-in` | `backend/app/routes/staff.py` | `reception_check_in` | Painéis da recepção e administração, testes e documentação | Oficial | Mantida como rota única; alias administrativo removido |
 | `PATCH /enfermagem/agendamentos/{id}/classificacao-risco` | `backend/app/routes/staff.py` | `classify_risk` | Painel da enfermagem e testes | Oficial | Mantida com escala única |
 | `PUT /appointments/{id}/status` | `backend/app/routes/operations.py` | `change_status` | Apenas painel legado inacessível e testes antigos | Antiga | Removida; misturava transição e escala por cores |
 | `GET /queue` | `backend/app/main.py` | `queue` | Painel administrativo e testes de prioridade | Oficial | Mantida para visão operacional geral |

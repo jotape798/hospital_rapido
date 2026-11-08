@@ -51,14 +51,13 @@ Base local: `http://127.0.0.1:8000`. Rotas protegidas usam `Authorization: Beare
 - `GET /recepcao/resumo` — indicadores da data; recepção.
 - `GET /recepcao/agendamentos` — agenda filtrada; recepção.
 - `GET /recepcao/agendamentos/{id}` — detalhes com CPF mascarado; recepção.
-- `PATCH /recepcao/agendamentos/{id}/check-in` — confirma chegada; recepção.
+- `PATCH /recepcao/agendamentos/{id}/check-in` — confirma chegada; recepção ou administrador.
 - `PATCH /recepcao/agendamentos/{id}/nao-compareceu` — registra ausência; recepção.
 - `PATCH /recepcao/agendamentos/{id}/condicoes/{condicao}/validacao` — confirma ou rejeita presencialmente PCD, gestante ou lactante e registra responsável/data; somente recepção.
 
 Rotas compartilhadas administrativas:
 
 - `GET /admin/appointments` — agenda diária; administrador, recepção ou profissional (profissional vê apenas as próprias).
-- `POST /admin/appointments/{id}/check-in` — confirma chegada; administrador ou recepção.
 - `POST /admin/appointments/{id}/absence` — registra falta; administrador ou recepção.
 - `GET /admin/appointments/{id}` — detalhes; administrador, recepção ou profissional atribuído.
 
