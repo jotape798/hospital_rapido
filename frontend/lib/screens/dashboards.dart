@@ -368,8 +368,6 @@ class _PatientDashboardState extends State<PatientDashboard> {
         .toList();
     final cancelled = items.where((x) => x.status == 'cancelado').toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      _pageHeading(Icons.calendar_month_outlined, 'Minhas consultas'),
-      const SizedBox(height: 8),
       section('Próximas', upcoming),
       section('Concluídas', completed),
       section('Canceladas', cancelled),
