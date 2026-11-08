@@ -282,6 +282,13 @@ def test_smtp_uses_tls_and_app_password(monkeypatch):
 
     calls = []
 
+    def validate_offline(email, *, check_deliverability):
+        calls.append(("validate", email, check_deliverability))
+        return type("ValidatedEmail", (), {"normalized": email.lower()})()
+
+    def unexpected_external_call(*_args, **_kwargs):
+        raise AssertionError("unexpected external network call")
+
     class SMTP:
         def __init__(self, host, port, timeout):
             calls.append(("connect", host, port))
@@ -304,16 +311,67 @@ def test_smtp_uses_tls_and_app_password(monkeypatch):
         def send_message(self, message):
             calls.append(("send", message))
 
-    monkeypatch.setenv("SMTP_HOST", "smtp.example.com")
-    monkeypatch.setenv("SMTP_USER", "projeto@example.com")
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.test")
+    monkeypatch.setenv("SMTP_USER", "projeto@example.test")
     monkeypatch.setenv("SMTP_PASSWORD", "test-only-app-password")
-    monkeypatch.setenv("SMTP_FROM", "projeto@example.com")
+    monkeypatch.setenv("SMTP_FROM", "projeto@example.test")
+    monkeypatch.setattr(mailer, "validate_email", validate_offline)
+    monkeypatch.setattr(mailer.socket, "getaddrinfo", unexpected_external_call)
     monkeypatch.setattr(mailer.smtplib, "SMTP", SMTP)
-    mailer.send_recovery("patient@example.com", "123456")
-    assert calls[1] == ("tls",)
-    assert calls[2][2] == "test-only-app-password"
-    assert calls[3][1]["To"] == "patient@example.com"
-    assert "123456" in calls[3][1].get_content()
+    monkeypatch.setattr(mailer.smtplib, "SMTP_SSL", unexpected_external_call)
+    mailer.send_recovery("paciente@example.test", "123456")
+    assert calls[:2] == [
+        ("validate", "projeto@example.test", False),
+        ("validate", "paciente@example.test", False),
+    ]
+    assert calls[3] == ("tls",)
+    assert calls[4][2] == "test-only-app-password"
+    assert calls[5][1]["To"] == "paciente@example.test"
+    assert "123456" in calls[5][1].get_content()
+
+
+@pytest.mark.parametrize(
+    "validation_error,expected_reason",
+    [
+        ("no_records", "SMTP_INVALID_ADDRESS"),
+        ("timeout", "SMTP_TIMEOUT"),
+    ],
+)
+def test_smtp_domain_validation_failures_are_offline(
+    monkeypatch, validation_error, expected_reason
+):
+    from app.services import mailer
+
+    calls = []
+
+    def validate_offline(email, *, check_deliverability):
+        calls.append((email, check_deliverability))
+        if email == "invalido@example.test":
+            if validation_error == "no_records":
+                raise mailer.EmailNotValidError("domain has no mail records")
+            raise mailer.socket.timeout("simulated DNS timeout")
+        return type("ValidatedEmail", (), {"normalized": email.lower()})()
+
+    def unexpected_external_call(*_args, **_kwargs):
+        raise AssertionError("unexpected external network call")
+
+    monkeypatch.setenv("SMTP_HOST", "smtp.example.test")
+    monkeypatch.setenv("SMTP_USER", "projeto@example.test")
+    monkeypatch.setenv("SMTP_PASSWORD", "test-only-app-password")
+    monkeypatch.setenv("SMTP_FROM", "projeto@example.test")
+    monkeypatch.setattr(mailer, "validate_email", validate_offline)
+    monkeypatch.setattr(mailer.socket, "getaddrinfo", unexpected_external_call)
+    monkeypatch.setattr(mailer.smtplib, "SMTP", unexpected_external_call)
+    monkeypatch.setattr(mailer.smtplib, "SMTP_SSL", unexpected_external_call)
+
+    with pytest.raises(mailer.MailUnavailable) as error:
+        mailer.send_recovery("invalido@example.test", "123456")
+
+    assert error.value.reason == expected_reason
+    assert calls == [
+        ("projeto@example.test", False),
+        ("invalido@example.test", False),
+    ]
 
 
 def test_migrate_existing_database_without_loss(client, tmp_path):
