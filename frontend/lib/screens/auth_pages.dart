@@ -726,7 +726,8 @@ class _ResponsiblePageState extends State<ResponsiblePage> {
         'guardian_email': email.text.trim().isEmpty ? null : email.text.trim()
       });
       if (mounted) {
-        announceImportant(context, 'Cadastro concluído. Faça login para entrar.');
+        announceImportant(
+            context, 'Cadastro concluído. Faça login para entrar.');
         Navigator.pushAndRemoveUntil(
             context,
             MaterialPageRoute(
