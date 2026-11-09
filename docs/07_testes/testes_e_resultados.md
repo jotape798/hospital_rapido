@@ -1,55 +1,74 @@
 # Testes e resultados
 
-Data da verificação: 22/10/2026 (America/Sao_Paulo).
+## Linha de base técnica final
 
-## Backend
+As suítes usam bancos SQLite temporários, dados fictícios e envio de e-mail
+simulado. O banco local do projeto e endereços reais não participam dos testes.
 
-Comando principal:
+### Backend
 
 ```powershell
 cd backend
 .\venv\Scripts\python.exe -m pytest tests -q --basetemp=<diretório temporário>
 ```
 
-Resultado final: **170 testes aprovados, 0 falhas**, em 139,63 s.
+Resultado final: **222 testes aprovados, 0 falhas**.
 
-- Foi acrescentada cobertura explícita para 59 anos, aniversário de 60 anos, aniversário futuro, idoso verdadeiro, requisições adulteradas, PCD/gestante/lactante pendentes, confirmação/rejeição exclusiva da recepção, auditoria, efeito na fila, migração corretiva e seed idempotente.
-- Os testes cobrem cadastro ativo e independente de SMTP, login imediato por CPF e senha, ausência de envio e de registro de verificação no cadastro, recuperação por e-mail, persistência/migração, agenda, concorrência de vaga, cancelamento/reagendamento, recepção, check-in, enfermagem, classificação manual, fila Médica, resumo obrigatório, atendimento exclusivo, administração, especialidades e permissões.
-- Foram emitidos **13 avisos de depreciação**, principalmente por `datetime.utcnow()`, `FastAPI.on_event` e alias `anyio.abc.BlockingPortal`. Não causaram falhas e devem ser tratados em evolução controlada para não alterar datas nem inicialização.
-- A cobertura nova valida os quatro códigos oficiais de risco, rejeita cores/texto inválido com `422`, confirma a propagação até a fila médica, verifica a ordem clínica/legal/chegada, a migração idempotente e a ausência das rotas antigas no OpenAPI.
-- A recuperação por e-mail cobre resposta pública indistinguível, código correto/incorreto/expirado/usado, cinco tentativas, reenvio antes e depois de 60 segundos, token obrigatório, confirmação de senha, BCrypt e novo login.
+A cobertura inclui autenticação e autorização por perfil, rejeição de JWT com
+algoritmo `none`, entradas semelhantes a injeção SQL, cadastro com confirmação
+obrigatória de e-mail, indisponibilidade do serviço de e-mail com rollback,
+recuperação de senha, responsáveis de menores, condições prioritárias
+pendentes e validação presencial, concorrência de vagas, check-in, falta
+automática após 15 minutos, triagem, escala de risco, fila médica, atendimento,
+administração, auditoria, migrações e integridade do SQLite.
 
-No cadastro, o SMTP foi substituído por uma função que falharia caso fosse chamada: nenhuma tentativa ocorreu, a conta ficou ativa e o login foi aprovado. Na recuperação de senha, o envio SMTP foi simulado; nenhuma mensagem real foi enviada e nenhum segredo foi exibido.
+Os testes de consultas verificam a ausência de regressão N+1 nos cenários
+direcionados, com contagens esperadas de **0, 1 e 8 consultas**, conforme o
+volume e o caminho exercitado. A ordenação concorrente da prioridade também é
+testada para preservar os critérios clínicos, legais e de chegada.
 
-## Flutter
+### Flutter
 
 ```powershell
 cd frontend
-flutter test test/auth_responsive_test.dart test/email_verification_test.dart test/password_recovery_flow_test.dart
+flutter test
 flutter analyze
+flutter build web --release
 ```
 
-- testes Flutter relacionados: **19 testes aprovados, 0 falhas**, em 16,17 s;
-- `flutter analyze`: **nenhum problema encontrado**, em 4,7 s.
+Resultados finais:
 
-Os testes direcionados incluem login único, cadastro sem confirmação automática, retorno ao login, nenhuma tentativa de login automático, fluxo auxiliar preservado, recuperação completa por e-mail, proteção contra toque duplo, textos longos, larguras de 320/360/390 px, fonte A+, semântica e ondas decorativas.
+- **177 testes aprovados, 0 falhas**;
+- `flutter analyze`: **nenhum problema encontrado**;
+- build Web `release`: **concluído com sucesso**. O diagnóstico de
+  compatibilidade WebAssembly pode emitir avisos de dependências, sem impedir
+  o build JavaScript de release.
 
-## Inicialização, API e banco
+A suíte cobre login e redirecionamento dos cinco perfis, cadastro e confirmação
+de e-mail, recuperação de senha, responsividade nas larguras de 390, 768 e
+1366 px, semântica e nomes acessíveis, navegação por teclado, foco, rolagem
+independente das áreas extensas, textos ampliados, preferências de
+acessibilidade e atualização periódica. Os testes de polling usam tempo falso,
+sem depender de espera real ou de serviços externos.
 
-- `INICIAR_TUDO.bat -Validar -SemPausa`: aprovado; ambiente `backend\venv`, Flutter e seed identificados;
-- teste automatizado do iniciador: aprovado;
-- API FastAPI: inicialização isolada aprovada;
-- `GET /health`: `200`, status `ok`;
-- Swagger `/docs`: `200`;
-- OpenAPI: título `UBS Rápida API`;
-- SQLite real: dados existentes preservados; arquivo alterado somente pela migração aditiva;
-- migração de prioridade aplicada com `PRAGMA integrity_check = ok`, 17 usuários, 9 consultas, 2 especialidades e 230 horários preservados; backup local criado em `backend/backups/` e ignorado pelo Git;
-- migração de risco executada duas vezes: **4 campos convertidos na primeira execução e 0 na segunda**; 17 usuários e 9 consultas preservados; backup `backend/backups/ubs_rapida.pre-risk-scale.bak` criado antes da conversão;
-- OpenAPI verificado com 0 rotas antigas presentes; `POST /appointments` é o único método da coleção e os endpoints oficiais de calendário, recuperação, triagem e fila médica permanecem publicados;
-- fluxo `check-in → triagem → fila médica → início → conclusão` aprovado em teste de integração;
-- redirecionamento por perfil confirmado nos testes Flutter.
+## Validações manuais pendentes
 
-## Observações
+As verificações abaixo **não estão comprovadas pela automação** e não devem ser
+descritas como aprovadas até uma execução manual registrada:
 
-- O cadastro não usa SMTP. A entrega real de e-mail continua necessária apenas para a recuperação de senha e depende da configuração local em `backend/.env`.
-- O `.env`, SQLite local, ambientes virtuais, caches, logs e builds permanecem fora do controle de versão.
+1. usar a aplicação com zoom real de **150%** no navegador e inspecionar cortes,
+   sobreposições, rolagem e foco nos cinco perfis;
+2. percorrer os fluxos principais com um **leitor de tela real**, ouvindo os
+   nomes, estados, erros, ordem de leitura e mudanças dinâmicas;
+3. confirmar entrega, expiração, reenvio, correção de endereço e recuperação
+   com um **serviço e uma caixa de e-mail reais**.
+
+## Limites da evidência
+
+- Nenhuma mensagem real foi enviada durante as suítes; códigos, tokens e
+  provedores foram simulados de forma isolada.
+- Testes automatizados de semântica, teclado e layout reduzem risco, mas não
+  substituem a experiência manual com navegador ampliado e tecnologia
+  assistiva.
+- Arquivos `.env`, bancos locais, ambientes virtuais, caches, logs e builds
+  permanecem fora do controle de versão.

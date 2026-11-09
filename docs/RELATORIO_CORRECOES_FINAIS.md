@@ -4,9 +4,9 @@
 
 - **Objetivo das correções:** eliminar as falhas funcionais, de segurança, usabilidade, acessibilidade, inicialização e consistência apontadas na avaliação, sem apagar o banco SQLite existente nem alterar o escopo acadêmico do MVP.
 - **Avaliação original do professor:** o material recebido para esta consolidação enumera 14 falhas, com destaque para prioridade legal autodeclarada, ausência de auditoria clínica, falso sucesso do iniciador, inconsistências na escala de risco e problemas de interface. O texto integral da avaliação e a nota oficial anterior não estão armazenados no repositório, portanto não são verificáveis por este relatório.
-- **Resultado final:** as 14 falhas enumeradas permanecem com correção implementada e evidência automatizada. Nesta validação, a suíte completa aprovou 170 testes de backend; 19 testes Flutter relacionados ao cadastro, login e recuperação também passaram, assim como a análise estática. Por decisão de escopo e usabilidade do projeto acadêmico, a confirmação obrigatória de e-mail foi retirada do cadastro e do primeiro login, sem alterar a recuperação de senha por e-mail. Permanecem não verificáveis nesta execução a entrega SMTP real da recuperação e a inspeção visual manual das cinco áreas em sessão autenticada.
+- **Resultado consolidado atual:** as suítes aprovam 222 testes de backend e 177 testes Flutter, a análise estática não aponta problemas e o build Web release conclui com sucesso. O cadastro exige confirmação de e-mail antes do primeiro login. Permanecem pendentes a entrega com e-mail real, o zoom manual de 150% e a validação com leitor de tela real; os detalhes atuais estão em `docs/07_testes/testes_e_resultados.md`.
 - **Nota anterior:** não informada no repositório; **não verificável**.
-- **Nota depois das correções:** **9,2/10**, como autoavaliação técnica baseada nas evidências locais; não substitui a nota oficial do professor. A redução de 0,1 ponto registra de forma transparente a retirada da prova obrigatória de posse do e-mail, embora o cadastro tenha ficado mais resiliente e adequado ao escopo definido.
+- **Avaliação numérica:** não atribuída por este relatório. As evidências e limitações são registradas sem pontuação própria e não substituem a avaliação oficial do professor.
 - **Data da validação:** 22/10/2026, fuso `America/Sao_Paulo`.
 
 ## 2. Tecnologias
@@ -71,7 +71,7 @@
 
 ## 5. Novas correções da auditoria final
 
-- **Cadastro e primeiro login sem confirmação obrigatória:** o cadastro público cria o paciente com estado de e-mail consistente e conta ativa, não chama SMTP nem cria registro inútil de verificação. O aplicativo retorna à tela de login, e CPF e senha válidos permitem acesso mesmo que uma conta antiga ainda possua `email_verificado = false`; nenhuma conta existente é atualizada por essa mudança. Cobertura em `test_email_verification.py` e `auth_responsive_test.dart`.
+- **Cadastro com confirmação obrigatória:** o cadastro público cria o paciente com `email_verificado = false`, emite um código protegido por hash e impede o primeiro login até a validação. Se o serviço de e-mail estiver indisponível, a transação é revertida com resposta segura. Há cobertura em `test_email_verification.py` e nos testes Flutter de autenticação.
 - **Recuperação de senha preservada:** o fluxo continua exigindo o código recebido por e-mail, com hash, expiração, limite de tentativas e uso único. Essa separação foi adotada como decisão de escopo/usabilidade do projeto acadêmico.
 - **401 sem autenticação:** token ausente, vazio, malformado, expirado, adulterado ou revogado retorna `401`. Cobertura em `test_auth_contract.py`.
 - **403 com autenticação sem permissão:** um perfil autenticado que tenta acessar rota de outro perfil recebe `403`. Cobertura parametrizada em `test_auth_contract.py` e testes dos perfis.
@@ -151,18 +151,16 @@ As telas de **Paciente, Recepção, Enfermagem, Médico e Administrador** foram 
 
 | Teste | Aprovados | Falhos | Duração | Resultado |
 | --- | ---: | ---: | --- | --- |
-| Backend (`pytest`) | 170 | 0 | 139,63 s | Aprovado; 13 avisos de depreciação |
-| Backend direcionado | 41 | 0 | 37,40 s | Cadastro, SMTP indisponível, login, 401/403, recuperação e seed aprovados |
-| Flutter relacionado (`flutter test`) | 19 | 0 | 16,17 s | Cadastro, login, fluxo auxiliar e recuperação aprovados |
-| `flutter analyze` | 1 análise | 0 problemas | 4,7 s | Aprovado |
-| Build Windows release | 1 | 0 | não repetido nesta etapa | Aprovado na validação consolidada anterior; não verificável novamente nesta execução |
-| Build Web release | 1 | 0 | não repetido nesta etapa | Aprovado na validação consolidada anterior; não verificável novamente nesta execução |
-| Fluxo HTTP | Incluído nos 170 testes | 0 | incluída no backend | Aprovado para cadastro, agenda, perfis e fluxo clínico |
-| Segurança | Incluída nos 170 testes | 0 | incluída no backend | Aprovado nos casos existentes; `alg:none` e injeção SQL sem teste dedicado |
+| Backend (`pytest`) | 222 | 0 | não registrada | Suíte completa aprovada |
+| Flutter (`flutter test`) | 177 | 0 | não registrada | Suíte completa aprovada |
+| `flutter analyze` | 1 análise | 0 problemas | não registrada | Aprovado |
+| Build Web release | 1 | 0 | não registrada | Concluído com sucesso |
+| Fluxo HTTP | Incluído nos 222 testes | 0 | incluída no backend | Aprovado para cadastro, agenda, perfis e fluxo clínico |
+| Segurança | Incluída nos 222 testes | 0 | incluída no backend | Inclui casos dedicados para JWT `alg:none` e entradas semelhantes a injeção SQL |
 | Banco | 4 verificações centrais | 0 | menos de 2 s, além da suíte | Integridade, FKs, órfãos e índices verificados |
 | Iniciador oficial | 1 validação + 2 suítes | 0 | 3,20 s + 47,01 s + 55,36 s | Aprovado, inclusive falso sucesso e `py -3` |
-| Responsividade do cadastro | Incluída nos 19 testes | 0 | incluída no Flutter | Aprovado em 320/360/390 px, A+ e textos longos; cobertura mais ampla permanece registrada na validação anterior |
-| Validação manual | 0 | 0 | não executada | Não verificável; serviço visual indisponível |
+| Responsividade e acessibilidade | Incluída nos 177 testes | 0 | incluída no Flutter | Cobertura automatizada em 390/768/1366 px; zoom de 150% e leitor de tela real permanecem pendentes |
+| Validação manual | 0 | 0 | não executada | Zoom 150%, leitor de tela e e-mail reais pendentes |
 | `git diff --check` | 1 | 0 | execução final | Aprovado após a criação deste relatório |
 
 ## 11. Arquivos alterados
@@ -207,7 +205,7 @@ O inventário abaixo foi obtido do estado do Git em 22/10/2026. Ele lista soment
 - `backend/tests/test_clinical_audit.py` — transições, falta e auditoria sem conteúdo sensível.
 - `backend/tests/test_clock.py` — UTC, São Paulo, virada do dia e idade.
 - `backend/tests/test_demo_seed_idempotency.py` — idempotência e preservação de vínculos do seed.
-- `backend/tests/test_email_verification.py` — comprova cadastro sem SMTP, ausência de código/registro, login imediato, preservação de conta antiga e segurança do fluxo auxiliar.
+- `backend/tests/test_email_verification.py` — comprova emissão e validação protegida do código, bloqueio do login não verificado, limites de tentativa/reenvio, correção segura do endereço e rollback quando o envio falha.
 - `backend/tests/test_integration.py` — integração HTTP sem alteração manual de `email_verificado`, segurança, CORS, agenda, perfis, concorrência e banco.
 - `backend/tests/test_medical_profile.py` — autorização, fila, atendimento, resumo e concorrência médica.
 - `backend/tests/test_nursing_demo_access.py` — reparo idempotente da conta fictícia de enfermagem.
@@ -269,20 +267,22 @@ O inventário abaixo foi obtido do estado do Git em 22/10/2026. Ele lista soment
 
 ## 12. Pendências
 
-- A entrega SMTP real da recuperação de senha não foi executada; os testes usam simulação e a entrega depende da configuração local segura. O cadastro não usa SMTP.
-- A inspeção visual manual autenticada das cinco áreas não pôde ser concluída nesta execução; os testes de widget e builds foram aprovados.
-- Não há teste automatizado dedicado para token `alg:none` nem para payload explícito de injeção SQL, embora a implementação restrinja algoritmo e use SQLAlchemy/comandos parametrizados.
-- Permanecem 13 avisos de depreciação no backend, sem falha funcional, relacionados principalmente a APIs antigas do ecossistema FastAPI/Python.
+- A entrega real de e-mail no cadastro e na recuperação de senha não foi executada; os testes usam simulação e a entrega depende da configuração local segura.
+- A inspeção manual com zoom real de 150% nos cinco perfis não foi executada.
+- A validação humana com leitor de tela real não foi executada.
 - O build Web tradicional foi aprovado, mas a verificação preliminar de Wasm avisou que `flutter_secure_storage_web` ainda usa bibliotecas não suportadas por Wasm. Isso não bloqueia o build Web atual.
 - A nota anterior e o texto integral da avaliação do professor não existem no repositório, portanto não são verificáveis.
 
 Não foram encontradas outras pendências funcionais dentro do escopo avaliado.
 
-## 13. Conclusão e nota
+## 13. Conclusão
 
-**Nota final técnica: 9,2/10.**
-
-A nota se justifica pela correção e cobertura automatizada das 14 falhas, pelo fluxo clínico completo, contratos 401/403, prioridade legal não autodeclarada, escala de risco única, auditoria sem conteúdo sensível, concorrência controlada, integridade do banco, inicializador supervisionado e interface responsiva/acessível. Nesta etapa, o projeto aprovou 170 testes de backend e 19 testes Flutter direcionados, além da análise estática. A retirada da confirmação obrigatória melhora a continuidade do cadastro quando o SMTP está indisponível, mas reduz a garantia de posse do endereço; por isso a autoavaliação foi recalculada de 9,3 para 9,2.
+O relatório registra as correções e a cobertura disponível para as 14 falhas,
+incluindo fluxo clínico, contratos 401/403, prioridade legal, escala de risco,
+auditoria, concorrência, integridade do banco, inicializador e interface. Os
+resultados consolidados e atuais estão em
+`docs/07_testes/testes_e_resultados.md`; este relatório não atribui nota ao
+projeto.
 
 Pontos fortes:
 

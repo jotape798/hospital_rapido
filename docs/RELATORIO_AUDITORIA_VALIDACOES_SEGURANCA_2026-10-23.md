@@ -95,6 +95,9 @@ O `.env` manteve o mesmo tamanho, data e SHA-256 antes e depois. O SQLite real m
 
 Não foram executados: suíte Flutter completa (a alteração foi localizada e os testes diretamente relacionados passaram), teste manual em dispositivo físico, pentest de uma implantação externa e auditoria online de CVEs de dependências. A execução HTTP foi feita com `TestClient` e banco temporário, não contra o processo local que mantinha o SQLite real aberto.
 
-Nota final: **8,8/10**. A base auditada apresenta boa separação de perfis, validação server-side e trilha de auditoria, com as quatro inconsistências reproduzidas corrigidas. A nota considera as limitações acima e não representa garantia de “100% seguro”.
+Conclusão técnica: a base auditada apresenta separação de perfis, validação
+server-side e trilha de auditoria, com as quatro inconsistências reproduzidas
+corrigidas. As limitações acima permanecem registradas; este relatório não
+atribui nota nem representa garantia de “100% seguro”.
 
 Não houve commit nem push.
