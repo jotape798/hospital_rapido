@@ -252,29 +252,39 @@ class AuthLayout extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final compact = screenClassOf(context) == ScreenClass.compact;
-    final card = ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 560),
-        child: Card(
-            key: cardKey,
-            child: Padding(
-                padding: EdgeInsets.all(compact ? 20 : (topAligned ? 24 : 30)),
-                child: child)));
-    if (!topAligned) {
-      return Center(
-          child: SingleChildScrollView(
-              padding: const EdgeInsets.fromLTRB(20, 82, 20, 30), child: card));
-    }
-    final size = MediaQuery.sizeOf(context);
-    final top = compact
-        ? 72.0
-        : size.height >= 900
-            ? 72.0
-            : 40.0;
-    return SingleChildScrollView(
-        key: const Key('top-aligned-auth-scroll'),
-        keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
-        padding: EdgeInsets.fromLTRB(20, top, 20, size.height < 700 ? 20 : 32),
-        child: Align(alignment: Alignment.topCenter, child: card));
+    return LayoutBuilder(builder: (context, constraints) {
+      const horizontalMargin = 20.0;
+      final availableWidth = constraints.maxWidth.isFinite
+          ? constraints.maxWidth - horizontalMargin * 2
+          : 560.0;
+      final cardWidth = availableWidth.clamp(0.0, 560.0).toDouble();
+      final card = SizedBox(
+          width: cardWidth,
+          child: Card(
+              key: cardKey,
+              child: Padding(
+                  padding:
+                      EdgeInsets.all(compact ? 20 : (topAligned ? 24 : 30)),
+                  child: child)));
+      if (!topAligned) {
+        return Center(
+            child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(20, 82, 20, 30),
+                child: card));
+      }
+      final size = MediaQuery.sizeOf(context);
+      final top = compact
+          ? 72.0
+          : size.height >= 900
+              ? 72.0
+              : 40.0;
+      return SingleChildScrollView(
+          key: const Key('top-aligned-auth-scroll'),
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+          padding:
+              EdgeInsets.fromLTRB(20, top, 20, size.height < 700 ? 20 : 32),
+          child: Align(alignment: Alignment.topCenter, child: card));
+    });
   }
 }
 

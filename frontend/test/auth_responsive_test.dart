@@ -47,6 +47,12 @@ Future<void> setViewport(WidgetTester tester, Size size) async {
   tester.view.devicePixelRatio = 1;
 }
 
+void expectInsideViewport(WidgetTester tester, Finder finder, double width) {
+  final rect = tester.getRect(finder);
+  expect(rect.left, greaterThanOrEqualTo(0));
+  expect(rect.right, lessThanOrEqualTo(width));
+}
+
 Future<void> chooseRegistrationDate(
     WidgetTester tester, String fieldLabel, DateTime value) async {
   final field = find.widgetWithText(TextFormField, fieldLabel);
@@ -91,16 +97,28 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
     for (final size in [
-      const Size(390, 800),
+      const Size(390, 900),
       const Size(768, 900),
-      const Size(1280, 900),
+      const Size(1366, 900),
     ]) {
       await setViewport(tester, size);
       await tester.pumpWidget(const UbsApp(home: LoginPage()));
+      await tester.pumpAndSettle();
       expect(find.bySemanticsLabel('UBS Rápida, saúde perto de você'),
           findsOneWidget);
       expect(find.text('Acesse sua conta'), findsOneWidget);
       expect(find.byType(AppActionButton), findsOneWidget);
+      final card = tester.getRect(find.byKey(const Key('login-card')));
+      expect(card.left, greaterThanOrEqualTo(20));
+      expect(card.right, lessThanOrEqualTo(size.width - 20));
+      for (final finder in [
+        find.widgetWithText(TextFormField, 'CPF'),
+        find.widgetWithText(TextFormField, 'Senha'),
+        find.byType(AppActionButton),
+        find.text('Cadastrar-se'),
+      ]) {
+        expectInsideViewport(tester, finder, size.width);
+      }
       expect(tester.takeException(), isNull);
     }
   });
@@ -306,12 +324,27 @@ void main() {
   testWidgets('registration_wraps_at_390_with_max_text_scale', (tester) async {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    await setViewport(tester, const Size(390, 800));
+    await setViewport(tester, const Size(390, 900));
     accessibility.fontSizeScale = 1.30;
+    accessibility.highContrast = true;
     await tester.pumpWidget(const UbsApp(home: RegisterPage()));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('Criar conta'), findsOneWidget);
+    final card = tester.getRect(find.byKey(const Key('registration-card')));
+    expect(card.left, greaterThanOrEqualTo(20));
+    expect(card.right, lessThanOrEqualTo(370));
+    expectInsideViewport(
+        tester, find.widgetWithText(TextFormField, 'Nome completo'), 390);
+    expectInsideViewport(
+        tester, find.byKey(const Key('registration-next')), 390);
+    final scrollable = find
+        .descendant(
+            of: find.byKey(const Key('top-aligned-auth-scroll')),
+            matching: find.byType(Scrollable))
+        .first;
+    expect(
+        tester.state<ScrollableState>(scrollable).position.axis, Axis.vertical);
     expect(tester.takeException(), isNull);
   });
 
@@ -471,13 +504,27 @@ void main() {
   testWidgets('recovery_keeps_primary_action_visible', (tester) async {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    await setViewport(tester, const Size(390, 800));
-    await tester.pumpWidget(const UbsApp(home: RecoveryPage()));
+    for (final size in [
+      const Size(390, 900),
+      const Size(768, 900),
+      const Size(1366, 900),
+    ]) {
+      await setViewport(tester, size);
+      await tester.pumpWidget(
+          UbsApp(home: RecoveryPage(key: ValueKey('recovery-$size'))));
+      await tester.pumpAndSettle();
 
-    final action = find.byType(AppActionButton);
-    expect(action, findsOneWidget);
-    expect(tester.getSize(action).height, greaterThanOrEqualTo(48));
-    expect(tester.takeException(), isNull);
+      final action = find.byType(AppActionButton);
+      expect(action, findsOneWidget);
+      expect(tester.getSize(action).height, greaterThanOrEqualTo(48));
+      final card = tester.getRect(find.byType(Card).first);
+      expect(card.left, greaterThanOrEqualTo(20));
+      expect(card.right, lessThanOrEqualTo(size.width - 20));
+      expectInsideViewport(tester,
+          find.widgetWithText(TextFormField, 'E-mail cadastrado'), size.width);
+      expectInsideViewport(tester, action, size.width);
+      expect(tester.takeException(), isNull);
+    }
   });
 
   testWidgets('email_verification_keeps_code_semantics', (tester) async {
