@@ -1,6 +1,7 @@
 """API da UBS Rápida: autenticação, RBAC e agendamentos."""
 
 from datetime import date, datetime, timedelta
+from contextlib import asynccontextmanager
 import logging
 import os
 from pathlib import Path
@@ -32,7 +33,13 @@ from app.schemas import (
 from app.core.config import check_config, ORIGINS
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="UBS Rápida API", version="2.0.0")
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    startup()
+    yield
+
+
+app = FastAPI(title="UBS Rápida API", version="2.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=ORIGINS,
@@ -559,7 +566,6 @@ def ensure_future_general_schedule(db: Session) -> int:
     return created
 
 
-@app.on_event("startup")
 def startup() -> None:
     check_config()
     demo_enabled = os.getenv("SEED_DEMO_DATA", "false").lower() == "true"
