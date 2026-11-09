@@ -21,10 +21,12 @@ class PendingLoginApi extends ApiService {
 class RegistrationApi extends ApiService {
   int registerCalls = 0;
   int loginCalls = 0;
+  Map<String, dynamic>? lastRegistrationData;
 
   @override
   Future<Map<String, dynamic>> register(Map<String, dynamic> data) async {
     registerCalls++;
+    lastRegistrationData = Map<String, dynamic>.from(data);
     return {
       'message': 'Cadastro iniciado. Confirme seu e-mail para entrar.',
       'email': data['email'],
@@ -43,6 +45,33 @@ class RegistrationApi extends ApiService {
 Future<void> setViewport(WidgetTester tester, Size size) async {
   tester.view.physicalSize = size;
   tester.view.devicePixelRatio = 1;
+}
+
+Future<void> chooseRegistrationDate(
+    WidgetTester tester, String fieldLabel, DateTime value) async {
+  final field = find.widgetWithText(TextFormField, fieldLabel);
+  await tester.ensureVisible(field);
+  await tester.pumpAndSettle();
+  await tester.drag(
+      find.byKey(const Key('top-aligned-auth-scroll')), const Offset(0, 120));
+  await tester.pumpAndSettle();
+  await tester.tap(field);
+  await tester.pumpAndSettle();
+  final dialog = find.byType(DatePickerDialog);
+  var inputMode =
+      find.descendant(of: dialog, matching: find.byIcon(Icons.edit_outlined));
+  if (inputMode.evaluate().isEmpty) {
+    inputMode = find.descendant(of: dialog, matching: find.byIcon(Icons.edit));
+  }
+  await tester.tap(inputMode);
+  await tester.pumpAndSettle();
+  final dateInput =
+      find.descendant(of: dialog, matching: find.byType(TextFormField));
+  final text =
+      '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
+  await tester.enterText(dateInput, text);
+  await tester.tap(find.text('OK'));
+  await tester.pumpAndSettle();
 }
 
 void main() {
@@ -152,6 +181,102 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Maria da Silva'), findsOneWidget);
     expect(find.text('529.982.247-25'), findsOneWidget);
+  });
+
+  testWidgets('cadastro mostra dados completos do responsável para menor',
+      (tester) async {
+    await tester.pumpWidget(const UbsApp(home: RegisterPage()));
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Nome completo'), 'Maria da Silva');
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'CPF'), '52998224725');
+    final now = DateTime.now();
+    await chooseRegistrationDate(
+        tester, 'Data de nascimento', DateTime(now.year - 10, 1, 1));
+    expect(find.text('Etapa 1 de 4 · Dados pessoais'), findsOneWidget);
+
+    await tester.ensureVisible(find.byKey(const Key('registration-next')));
+    await tester.tap(find.byKey(const Key('registration-next')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'E-mail'), 'maria@example.com');
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Telefone / celular'),
+        '11987654321');
+    await tester.ensureVisible(find.byKey(const Key('registration-next')));
+    await tester.tap(find.byKey(const Key('registration-next')));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Etapa 3 de 4 · Responsável legal'), findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'Nome completo do responsável'),
+        findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'CPF do responsável'),
+        findsOneWidget);
+    expect(
+        find.widgetWithText(TextFormField, 'Data de nascimento do responsável'),
+        findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'Telefone do responsável'),
+        findsOneWidget);
+    expect(find.widgetWithText(TextFormField, 'E-mail do responsável'),
+        findsOneWidget);
+    expect(find.text('Grau de parentesco do responsável'), findsOneWidget);
+  });
+
+  testWidgets('alterar nascimento para adulto remove dados do responsável',
+      (tester) async {
+    await tester.pumpWidget(const UbsApp(home: RegisterPage()));
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Nome completo'), 'Maria da Silva');
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'CPF'), '52998224725');
+    final now = DateTime.now();
+    final minorDate = DateTime(now.year - 10, 1, 1);
+    await chooseRegistrationDate(tester, 'Data de nascimento', minorDate);
+    await tester.ensureVisible(find.byKey(const Key('registration-next')));
+    await tester.tap(find.byKey(const Key('registration-next')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'E-mail'), 'maria@example.com');
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Telefone / celular'),
+        '11987654321');
+    await tester.ensureVisible(find.byKey(const Key('registration-next')));
+    await tester.tap(find.byKey(const Key('registration-next')));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Nome completo do responsável'),
+        'Ana Souza');
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'CPF do responsável'),
+        '11144477735');
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'Telefone do responsável'),
+        '11977776666');
+    await tester.enterText(
+        find.widgetWithText(TextFormField, 'E-mail do responsável'),
+        'ana@example.com');
+
+    await tester.ensureVisible(find.byKey(const Key('registration-back')));
+    await tester.tap(find.byKey(const Key('registration-back')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('registration-back')));
+    await tester.tap(find.byKey(const Key('registration-back')));
+    await tester.pumpAndSettle();
+    await chooseRegistrationDate(
+        tester, 'Data de nascimento', DateTime(2000, 1, 1));
+    expect(find.text('Etapa 1 de 3 · Dados pessoais'), findsOneWidget);
+
+    await chooseRegistrationDate(tester, 'Data de nascimento', minorDate);
+    await tester.ensureVisible(find.byKey(const Key('registration-next')));
+    await tester.tap(find.byKey(const Key('registration-next')));
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const Key('registration-next')));
+    await tester.tap(find.byKey(const Key('registration-next')));
+    await tester.pumpAndSettle();
+    expect(find.text('Etapa 3 de 4 · Responsável legal'), findsOneWidget);
+    expect(find.text('Ana Souza'), findsNothing);
+    expect(find.text('111.444.777-35'), findsNothing);
+    expect(find.text('ana@example.com'), findsNothing);
   });
 
   testWidgets('cadastro confirma antes de descartar dados preenchidos',
@@ -335,6 +460,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(api.registerCalls, 1);
+    expect(api.lastRegistrationData!.containsKey('guardian_name'), isFalse);
+    expect(api.lastRegistrationData!.containsKey('guardian_cpf'), isFalse);
     expect(api.loginCalls, 0);
     expect(find.text('Verifique seu e-mail'), findsOneWidget);
     expect(find.textContaining('Reenviar código em'), findsOneWidget);

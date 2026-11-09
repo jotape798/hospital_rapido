@@ -691,15 +691,27 @@ def register(
         e_prioridade=priority,
         e_menor_idade=minor,
         nome_responsavel=(
-            payload.guardian_name.strip() if payload.guardian_name else None
+            payload.guardian_name.strip()
+            if minor and payload.guardian_name
+            else None
         ),
-        cpf_responsavel=guardian_cpf or None,
-        data_nascimento_responsavel=payload.guardian_birth_date,
-        parentesco_responsavel=payload.guardian_relationship,
-        outro_parentesco_responsavel=payload.guardian_other_relationship,
-        telefone_responsavel=digits(payload.guardian_phone or "") or None,
+        cpf_responsavel=guardian_cpf if minor else None,
+        data_nascimento_responsavel=(
+            payload.guardian_birth_date if minor else None
+        ),
+        parentesco_responsavel=(
+            payload.guardian_relationship if minor else None
+        ),
+        outro_parentesco_responsavel=(
+            payload.guardian_other_relationship if minor else None
+        ),
+        telefone_responsavel=(
+            (digits(payload.guardian_phone or "") or None) if minor else None
+        ),
         email_responsavel=(
-            str(payload.guardian_email).lower() if payload.guardian_email else None
+            str(payload.guardian_email).lower()
+            if minor and payload.guardian_email
+            else None
         ),
     )
     db.add(user)

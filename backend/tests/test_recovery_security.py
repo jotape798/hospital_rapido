@@ -12,6 +12,7 @@ GUARDIAN = dict(
     birth_date="2015-03-15",
     guardian_name="Ana Souza",
     guardian_cpf="11144477735",
+    guardian_birth_date="1980-01-01",
     guardian_phone="11977776666",
     guardian_email="ana@example.com",
     guardian_relationship="Mãe",

@@ -57,11 +57,24 @@ def validate_guardian(payload):
             "guardian_phone",
             "O telefone do responsável deve ser diferente do telefone do paciente.",
         )
-    if payload.guardian_birth_date and is_minor(payload.guardian_birth_date):
+    if not payload.guardian_birth_date:
+        field_error(
+            "guardian_birth_date",
+            "Informe a data de nascimento do responsável legal.",
+        )
+    if is_minor(payload.guardian_birth_date):
         field_error(
             "guardian_birth_date", "O responsável legal deve ter pelo menos 18 anos."
         )
     if not payload.guardian_relationship:
         field_error(
             "guardian_relationship", "Informe o parentesco do responsável legal."
+        )
+    if (
+        payload.guardian_relationship == "Outro responsável legal"
+        and not (payload.guardian_other_relationship or "").strip()
+    ):
+        field_error(
+            "guardian_other_relationship",
+            "Descreva o parentesco do responsável legal.",
         )

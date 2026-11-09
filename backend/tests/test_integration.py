@@ -1,7 +1,7 @@
 import os
 import secrets
 import tempfile
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 import pytest
 
@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select, func
 from app.main import app, migrate_database
 from app.core.database import Base, engine, SessionLocal
+from app.core import clock
 from app.models import (
     User,
     Guardian,
@@ -65,6 +66,13 @@ def register(client, **overrides):
             user.email_verificado = True
             db.commit()
     return response
+
+
+def years_before(value: date, years: int) -> date:
+    try:
+        return value.replace(year=value.year - years)
+    except ValueError:
+        return value.replace(year=value.year - years, day=28)
 
 
 def login(client, document="52998224725", password="Paciente@123"):
@@ -138,6 +146,7 @@ def test_minors_share_guardian(client):
         birth_date="2015-03-15",
         guardian_name="Ana Souza",
         guardian_cpf="11144477735",
+        guardian_birth_date="1980-01-01",
         guardian_phone="11977776666",
         guardian_email="ana@example.com",
         guardian_relationship="Mãe",
@@ -155,8 +164,68 @@ def test_minors_share_guardian(client):
         == 201
     )
     with SessionLocal() as db:
+        assert db.scalar(select(func.count(User.id))) == 2
         assert db.scalar(select(func.count(Guardian.id))) == 1
         assert db.scalar(select(func.count(PatientGuardian.paciente_id))) == 2
+        assert all(user.perfil == "paciente" for user in db.scalars(select(User)))
+        assert all(
+            user.data_nascimento_responsavel == datetime(1980, 1, 1)
+            for user in db.scalars(select(User))
+        )
+
+
+def test_registration_age_boundary_uses_complete_birth_date(client):
+    today = clock.today_sao_paulo()
+    exact_eighteen = years_before(today, 18)
+    response = register(client, birth_date=exact_eighteen.isoformat())
+    assert response.status_code == 201
+    with SessionLocal() as db:
+        user = db.scalar(select(User))
+        assert user.e_menor_idade is False
+        assert db.scalar(select(func.count(PatientGuardian.paciente_id))) == 0
+
+
+def test_one_day_before_eighteen_requires_guardian(client):
+    tomorrow = clock.today_sao_paulo() + timedelta(days=1)
+    one_day_before_eighteen = years_before(tomorrow, 18)
+    response = register(client, birth_date=one_day_before_eighteen.isoformat())
+    assert response.status_code == 422
+    assert response.json()["detail"]["field"] == "guardian_name"
+
+
+@pytest.mark.parametrize(
+    "birth_date",
+    [
+        lambda: (clock.today_sao_paulo() + timedelta(days=1)).isoformat(),
+        lambda: "2026-02-30",
+    ],
+)
+def test_future_or_invalid_birth_date_is_rejected(client, birth_date):
+    assert register(client, birth_date=birth_date()).status_code == 422
+
+
+def test_adult_registration_discards_unrelated_guardian_payload(client):
+    response = register(
+        client,
+        guardian_name="Ana Souza",
+        guardian_cpf="11144477735",
+        guardian_birth_date="1980-01-01",
+        guardian_phone="11977776666",
+        guardian_email="ana@example.com",
+        guardian_relationship="Mãe",
+    )
+    assert response.status_code == 201
+    with SessionLocal() as db:
+        user = db.scalar(select(User))
+        assert user.e_menor_idade is False
+        assert user.nome_responsavel is None
+        assert user.cpf_responsavel is None
+        assert user.data_nascimento_responsavel is None
+        assert user.parentesco_responsavel is None
+        assert user.telefone_responsavel is None
+        assert user.email_responsavel is None
+        assert db.scalar(select(func.count(Guardian.id))) == 0
+        assert db.scalar(select(func.count(PatientGuardian.paciente_id))) == 0
 
 
 def test_legacy_recovery_routes_are_removed(client):

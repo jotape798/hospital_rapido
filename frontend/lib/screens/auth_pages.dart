@@ -147,8 +147,10 @@ class _RegisterPageState extends State<RegisterPage> {
       confirmation = TextEditingController(),
       guardianName = TextEditingController(),
       guardianCpf = TextEditingController(),
+      guardianBirth = TextEditingController(),
       guardianPhone = TextEditingController(),
-      guardianEmail = TextEditingController();
+      guardianEmail = TextEditingController(),
+      guardianOtherRelationship = TextEditingController();
   String relationship = 'Mãe';
   bool busy = false, hide = true, minor = false, allowPop = false;
   int currentStep = 0;
@@ -160,7 +162,7 @@ class _RegisterPageState extends State<RegisterPage> {
   List<String> get stepTitles => [
         'Dados pessoais',
         'Contato',
-        if (minor) 'Responsável',
+        if (minor) 'Responsável legal',
         'Acesso à conta',
       ];
 
@@ -176,8 +178,10 @@ class _RegisterPageState extends State<RegisterPage> {
         confirmation,
         guardianName,
         guardianCpf,
+        guardianBirth,
         guardianPhone,
         guardianEmail,
+        guardianOtherRelationship,
       ].any((controller) => controller.text.trim().isNotEmpty);
 
   @override
@@ -220,7 +224,7 @@ class _RegisterPageState extends State<RegisterPage> {
   GlobalKey<FormState> get _currentFormKey => switch (stepTitles[currentStep]) {
         'Dados pessoais' => personalKey,
         'Contato' => contactKey,
-        'Responsável' => guardianKey,
+        'Responsável legal' => guardianKey,
         _ => accountKey,
       };
 
@@ -251,9 +255,11 @@ class _RegisterPageState extends State<RegisterPage> {
         'email' || 'phone' => 1,
         'guardian_name' ||
         'guardian_cpf' ||
+        'guardian_birth_date' ||
         'guardian_phone' ||
         'guardian_email' ||
-        'guardian_relationship' =>
+        'guardian_relationship' ||
+        'guardian_other_relationship' =>
           minor ? 2 : 1,
         _ => totalSteps - 1,
       };
@@ -271,14 +277,37 @@ class _RegisterPageState extends State<RegisterPage> {
         birthIso =
             '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}';
         final now = DateTime.now();
-        minor = now.year -
+        final isMinor = now.year -
                 picked.year -
                 ((now.month < picked.month ||
                         (now.month == picked.month && now.day < picked.day))
                     ? 1
                     : 0) <
             18;
+        if (minor && !isMinor) {
+          guardianName.clear();
+          guardianCpf.clear();
+          guardianBirth.clear();
+          guardianPhone.clear();
+          guardianEmail.clear();
+          guardianOtherRelationship.clear();
+          relationship = 'Mãe';
+          serverErrors.removeWhere((field, _) => field.startsWith('guardian_'));
+        }
+        minor = isMinor;
       });
+    }
+  }
+
+  Future<void> chooseGuardianBirth() async {
+    final picked = await showDatePicker(
+        context: context,
+        firstDate: DateTime(1900),
+        lastDate: DateTime.now(),
+        initialDate: DateTime(1980));
+    if (picked != null) {
+      setState(() => guardianBirth.text =
+          '${picked.year.toString().padLeft(4, '0')}-${picked.month.toString().padLeft(2, '0')}-${picked.day.toString().padLeft(2, '0')}');
     }
   }
 
@@ -303,9 +332,13 @@ class _RegisterPageState extends State<RegisterPage> {
       if (minor) ...{
         'guardian_name': guardianName.text.trim(),
         'guardian_cpf': digits(guardianCpf.text),
+        'guardian_birth_date': guardianBirth.text,
         'guardian_phone': digits(guardianPhone.text),
         'guardian_email': guardianEmail.text.trim(),
-        'guardian_relationship': relationship
+        'guardian_relationship': relationship,
+        'guardian_other_relationship': relationship == 'Outro responsável legal'
+            ? guardianOtherRelationship.text.trim()
+            : null,
       }
     };
     setState(() => busy = true);
@@ -358,8 +391,10 @@ class _RegisterPageState extends State<RegisterPage> {
       confirmation,
       guardianName,
       guardianCpf,
+      guardianBirth,
       guardianPhone,
-      guardianEmail
+      guardianEmail,
+      guardianOtherRelationship
     ]) {
       c.dispose();
     }
@@ -540,7 +575,7 @@ class _RegisterPageState extends State<RegisterPage> {
                   text:
                       'Esses contatos serão usados para comunicações sobre consultas e acesso à conta.'),
             ])),
-        'Responsável' => Form(
+        'Responsável legal' => Form(
             key: guardianKey,
             child: Column(children: [
               const InfoPanel(
@@ -559,6 +594,17 @@ class _RegisterPageState extends State<RegisterPage> {
                   errorText: serverErrors['guardian_cpf'],
                   validator: (v) => guardianCpfRule(v, cpf.text),
                   inputFormatters: [CpfFormatter()]),
+              Padding(
+                  padding: const EdgeInsets.only(bottom: 16),
+                  child: TextFormField(
+                      controller: guardianBirth,
+                      readOnly: true,
+                      onTap: chooseGuardianBirth,
+                      validator: guardianBirthRule,
+                      forceErrorText: serverErrors['guardian_birth_date'],
+                      decoration: const InputDecoration(
+                          labelText: 'Data de nascimento do responsável',
+                          prefixIcon: Icon(Icons.calendar_today_outlined)))),
               field(guardianPhone, 'Telefone do responsável',
                   Icons.phone_outlined,
                   number: true,
@@ -575,8 +621,8 @@ class _RegisterPageState extends State<RegisterPage> {
               DropdownButtonFormField<String>(
                   isExpanded: true,
                   initialValue: relationship,
-                  decoration:
-                      const InputDecoration(labelText: 'Grau de parentesco'),
+                  decoration: const InputDecoration(
+                      labelText: 'Grau de parentesco do responsável'),
                   items: [
                     'Mãe',
                     'Pai',
@@ -588,6 +634,15 @@ class _RegisterPageState extends State<RegisterPage> {
                       .toList(),
                   onChanged:
                       busy ? null : (v) => setState(() => relationship = v!)),
+              const SizedBox(height: AppSpacing.sm),
+              if (relationship == 'Outro responsável legal')
+                field(guardianOtherRelationship,
+                    'Descrição do vínculo do responsável', Icons.edit_outlined,
+                    errorText: serverErrors['guardian_other_relationship'],
+                    validator: (v) => (v ?? '').trim().isEmpty
+                        ? 'Descreva o parentesco do responsável legal.'
+                        : null,
+                    inputFormatters: [LengthLimitingTextInputFormatter(80)]),
               const SizedBox(height: AppSpacing.md),
             ])),
         _ => Form(
