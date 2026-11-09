@@ -18,6 +18,14 @@ Identidades de pacientes e equipe. PK `id`. Campos principais: `nome`, `cpf`, `c
 
 `e_prioridade` é mantido por compatibilidade, mas não é fonte de verdade para pessoa idosa. A API calcula a idade completa a partir de `data_nascimento`.
 
+Os campos legados de responsável em `usuarios` (`nome_responsavel`,
+`cpf_responsavel`, `data_nascimento_responsavel`, `parentesco_responsavel`,
+`outro_parentesco_responsavel`, `telefone_responsavel` e `email_responsavel`)
+continuam preservados por compatibilidade. A fonte relacional é
+`responsaveis` + `pacientes_responsaveis`. A remoção futura desses campos exige
+migração específica, inventário dos bancos existentes, cópia de segurança e
+validação de integridade.
+
 ### `condicoes_prioritarias`
 
 Estado atual de PCD, gestante e lactante. Possui unicidade por paciente/condição, estado `pendente`, `confirmada`, `rejeitada` ou `retirada`, momento da declaração e, após validação presencial, usuário da recepção e data/hora. `retirada` preserva o histórico quando o paciente desmarca uma condição ainda pendente. Estados pendentes, rejeitados ou retirados não alteram a fila.
@@ -76,7 +84,7 @@ Solicitações temporárias. PK `id`; FK `usuario_id -> usuarios.id`; `codigo_ha
 
 ### `verificacoes_email`
 
-Códigos de confirmação. PK `id`; FK `usuario_id -> usuarios.id`; `codigo_hash`, validade, tentativas, uso e criação. Cadastro público.
+Códigos de confirmação e correção segura do endereço. PK `id`; FK `usuario_id -> usuarios.id`; `codigo_hash`, `token_correcao_hash` opcional, validade, tentativas, uso e criação. Tanto o código quanto o token de correção são persistidos somente como hash.
 
 ### `limites_tentativas`
 
