@@ -41,13 +41,15 @@ class FakeStaffApi extends ApiService {
       this.withPendingPcd = false,
       this.failReceptionLoad = false,
       this.failNursingLoad = false,
-      this.withBlockedTriage = false});
+      this.withBlockedTriage = false,
+      this.priorityValidationError});
   final bool professional;
   final String patientName;
   final bool withPendingPcd;
   bool failReceptionLoad;
   bool failNursingLoad;
   final bool withBlockedTriage;
+  final String? priorityValidationError;
   int checkIns = 0;
   int classifications = 0;
   int calls = 0;
@@ -152,6 +154,9 @@ class FakeStaffApi extends ApiService {
   Future<void> receptionValidatePriorityCondition(
       int appointmentId, String condition, String status) async {
     priorityValidationCalls++;
+    if (priorityValidationError != null) {
+      throw ApiException(priorityValidationError!, statusCode: 409);
+    }
   }
 
   @override
@@ -188,8 +193,10 @@ class FakeStaffApi extends ApiService {
         'specialty': 'Clínica Geral',
         'professional': 'Profissional Fictício',
         'scheduled_at': DateTime.now().toIso8601String(),
-        'status': professional ? 'em_espera' : 'agendado',
-        'arrived_at': professional ? DateTime.now().toIso8601String() : null,
+        'status': professional ? 'em_espera' : receptionStatus,
+        'arrived_at': professional || receptionStatus != 'agendado'
+            ? DateTime.now().toIso8601String()
+            : null,
         'priority_conditions': withPendingPcd
             ? [
                 {
@@ -653,6 +660,7 @@ void main() {
     await tester.binding.setSurfaceSize(const Size(1280, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     final api = FakeStaffApi(false, withPendingPcd: true);
+    api.receptionStatus = 'em_espera';
     ApiService.session =
         const Session('token', 'Recepção Fictícia', 'recepcao', []);
     await tester.pumpWidget(UbsApp(home: StaffDashboard(api: api)));
@@ -668,6 +676,53 @@ void main() {
     await tester.pumpAndSettle();
     expect(api.priorityValidationCalls, 1);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('recepção explica bloqueio antes do check-in', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final api = FakeStaffApi(false, withPendingPcd: true);
+    ApiService.session =
+        const Session('token', 'Recepção Fictícia', 'recepcao', []);
+    await tester.pumpWidget(UbsApp(home: StaffDashboard(api: api)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Detalhes'));
+    await tester.pumpAndSettle();
+    expect(find.text('Disponível após o check-in, enquanto aguarda triagem.'),
+        findsOneWidget);
+    expect(
+        tester
+            .widget<TextButton>(
+              find.widgetWithText(TextButton, 'Confirmar'),
+            )
+            .onPressed,
+        isNull);
+    expect(api.priorityValidationCalls, 0);
+  });
+
+  testWidgets('recepção exibe bloqueio devolvido pela API', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1280, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    const message =
+        'Somente condição prioritária pendente pode ser confirmada ou rejeitada';
+    final api = FakeStaffApi(false,
+        withPendingPcd: true, priorityValidationError: message)
+      ..receptionStatus = 'em_espera';
+    ApiService.session =
+        const Session('token', 'Recepção Fictícia', 'recepcao', []);
+    await tester.pumpWidget(UbsApp(home: StaffDashboard(api: api)));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Detalhes'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(TextButton, 'Confirmar'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Confirmar'));
+    await tester.pumpAndSettle();
+
+    expect(api.priorityValidationCalls, 1);
+    expect(find.text(message), findsOneWidget);
   });
 
   testWidgets('profissional usa somente quatro níveis manuais de risco',

@@ -190,6 +190,10 @@ class _StaffDashboardState extends State<StaffDashboard> {
                           ...conditions.map((condition) {
                             final code = condition['condition'].toString();
                             final status = condition['status'].toString();
+                            final canValidate = isReception &&
+                                status == 'pendente' &&
+                                value['status'] == 'em_espera' &&
+                                value['arrived_at'] != null;
                             final label = switch (code) {
                               'pcd' => 'PCD',
                               'gestante' => 'Gestante',
@@ -204,23 +208,34 @@ class _StaffDashboardState extends State<StaffDashboard> {
                                   if (condition['validated_by'] != null)
                                     Text(
                                         'Validado por ${condition['validated_by']} em ${showDate(DateTime.parse(condition['validated_at']))}'),
-                                  if (isReception && status == 'pendente')
+                                  if (isReception && status == 'pendente') ...[
+                                    if (!canValidate)
+                                      const Text(
+                                          'Disponível após o check-in, enquanto aguarda triagem.'),
                                     Wrap(spacing: 8, children: [
                                       TextButton(
-                                          onPressed: () async {
-                                            Navigator.pop(context);
-                                            await _validateCondition(item, code,
-                                                'confirmada', label);
-                                          },
+                                          onPressed: canValidate
+                                              ? () async {
+                                                  Navigator.pop(context);
+                                                  await _validateCondition(
+                                                      item,
+                                                      code,
+                                                      'confirmada',
+                                                      label);
+                                                }
+                                              : null,
                                           child: const Text('Confirmar')),
                                       TextButton(
-                                          onPressed: () async {
-                                            Navigator.pop(context);
-                                            await _validateCondition(
-                                                item, code, 'rejeitada', label);
-                                          },
+                                          onPressed: canValidate
+                                              ? () async {
+                                                  Navigator.pop(context);
+                                                  await _validateCondition(item,
+                                                      code, 'rejeitada', label);
+                                                }
+                                              : null,
                                           child: const Text('Rejeitar')),
                                     ])
+                                  ]
                                 ]);
                           }),
                         ],

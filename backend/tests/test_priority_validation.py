@@ -1,6 +1,9 @@
 """Regressões da prioridade legal calculada e da validação presencial."""
+from concurrent.futures import ThreadPoolExecutor
 from datetime import date, datetime, timedelta
+from threading import Barrier
 
+import pytest
 from sqlalchemy import func, select
 
 # Este import configura DATABASE_URL temporária antes de qualquer módulo app.*.
@@ -28,6 +31,51 @@ def _birth_for_age(age: int, *, birthday_delta_days: int = 0) -> date:
     today = date.today()
     birthday = today + timedelta(days=birthday_delta_days)
     return birthday.replace(year=birthday.year - age)
+
+
+def _validation_case(
+    *,
+    appointment_status: str = "em_espera",
+    condition_status: str = "pendente",
+    checked_in: bool = True,
+) -> tuple[int, int, dict[str, str]]:
+    now = datetime.now()
+    with SessionLocal() as db:
+        reception = User(
+            nome="Recepção Validação", cpf="98765432100",
+            email="recepcao.validacao@example.test",
+            senha_hash=pwd.hash("Recepcao@123"), perfil="recepcao", ativo=True,
+        )
+        patient = User(
+            nome="Paciente Validação", cpf="52998224725",
+            email="paciente.validacao@example.test",
+            senha_hash=pwd.hash("Paciente@123"), perfil="paciente", ativo=True,
+            data_nascimento=datetime(1990, 1, 1), e_prioridade="geral",
+        )
+        db.add_all([reception, patient])
+        db.flush()
+        condition = PriorityCondition(
+            paciente_id=patient.id, condicao="pcd", status=condition_status,
+        )
+        appointment = Appointment(
+            paciente_id=patient.id, medico_id=reception.id,
+            especialidade="Clínica Geral", data_horario=now,
+            status=appointment_status,
+            chegada_em=now - timedelta(minutes=5) if checked_in else None,
+            chegada_por=reception.id if checked_in else None,
+            falta_em=now if appointment_status == "falta" else None,
+        )
+        db.add_all([condition, appointment])
+        db.flush()
+        db.add(PriorityConditionHistory(
+            condicao_prioritaria_id=condition.id, status_anterior=None,
+            status_novo=condition_status, alterado_por=patient.id,
+        ))
+        appointment_id = appointment.id
+        condition_id = condition.id
+        headers = _headers(reception)
+        db.commit()
+    return appointment_id, condition_id, headers
 
 
 def test_full_age_handles_59_exactly_60_future_birthday_and_over_60():
@@ -124,7 +172,7 @@ def test_patient_can_withdraw_pending_condition_without_erasing_history(client):
         assert [event.status_novo for event in history] == ["pendente", "retirada"]
 
 
-def test_repeated_priority_confirmation_is_idempotent_and_audited_with_role(client):
+def test_confirmed_priority_cannot_be_changed_and_is_audited_with_role(client):
     now = datetime.now()
     with SessionLocal() as db:
         reception = User(
@@ -146,7 +194,8 @@ def test_repeated_priority_confirmation_is_idempotent_and_audited_with_role(clie
         appointment = Appointment(
             paciente_id=patient.id, medico_id=reception.id,
             especialidade="Clínica Geral", data_horario=now,
-            status="agendado",
+            status="em_espera", chegada_em=now - timedelta(minutes=5),
+            chegada_por=reception.id,
         )
         db.add_all([condition, appointment])
         db.flush()
@@ -157,13 +206,17 @@ def test_repeated_priority_confirmation_is_idempotent_and_audited_with_role(clie
         db.commit()
         appointment_id = appointment.id
         condition_id = condition.id
+        reception_id = reception.id
         headers = _headers(reception)
 
     path = f"/recepcao/agendamentos/{appointment_id}/condicoes/pcd/validacao"
     assert client.patch(path, headers=headers, json={"status": "confirmada"}).status_code == 200
-    assert client.patch(path, headers=headers, json={"status": "confirmada"}).status_code == 200
+    repeated = client.patch(path, headers=headers, json={"status": "rejeitada"})
+    assert repeated.status_code == 409
+    assert "pendente" in repeated.json()["detail"]
 
     with SessionLocal() as db:
+        condition = db.get(PriorityCondition, condition_id)
         history_count = db.scalar(select(func.count(PriorityConditionHistory.id)).where(
             PriorityConditionHistory.condicao_prioritaria_id == condition_id
         ))
@@ -174,6 +227,17 @@ def test_repeated_priority_confirmation_is_idempotent_and_audited_with_role(clie
         )))
         assert history_count == 2
         assert len(audits) == 1
+        assert condition.status == "confirmada"
+        assert condition.validada_por == reception_id
+        assert condition.validada_em is not None
+        validation = db.scalar(select(PriorityConditionHistory).where(
+            PriorityConditionHistory.condicao_prioritaria_id == condition_id,
+            PriorityConditionHistory.status_novo == "confirmada",
+        ))
+        assert validation.alterado_por == reception_id
+        assert validation.criado_em is not None
+        assert audits[0].usuario_id == reception_id
+        assert audits[0].criado_em is not None
         assert '"perfil_responsavel": "recepcao"' in audits[0].detalhes
 
 
@@ -235,21 +299,146 @@ def test_reception_confirms_and_rejects_with_audit_and_queue_effect(client):
     queue = client.get("/queue", headers=reception_headers).json()
     assert queue[0]["id"] == newer_id
 
-    rejected = client.patch(
-        f"/recepcao/agendamentos/{newer_id}/condicoes/pcd/validacao",
-        headers=reception_headers, json={"status": "rejeitada"},
-    )
-    assert rejected.status_code == 200
-    queue = client.get("/queue", headers=reception_headers).json()
-    assert queue[0]["patient"].startswith("Paciente G")
     with SessionLocal() as db:
         condition = db.scalar(select(PriorityCondition))
         history = list(db.scalars(select(PriorityConditionHistory).where(
             PriorityConditionHistory.condicao_prioritaria_id == condition.id
         )))
         assert [event.status_novo for event in history] == [
-            "pendente", "confirmada", "rejeitada"
+            "pendente", "confirmada"
         ]
+
+
+def test_reception_rejects_pending_condition_without_invalidating_appointment(client):
+    appointment_id, condition_id, headers = _validation_case()
+    path = f"/recepcao/agendamentos/{appointment_id}/condicoes/pcd/validacao"
+
+    rejected = client.patch(path, headers=headers, json={"status": "rejeitada"})
+    assert rejected.status_code == 200
+    assert rejected.json()["status"] == "em_espera"
+    assert rejected.json()["legal_priority"] == "geral"
+
+    changed_again = client.patch(
+        path, headers=headers, json={"status": "confirmada"},
+    )
+    assert changed_again.status_code == 409
+    assert "pendente" in changed_again.json()["detail"]
+    with SessionLocal() as db:
+        condition = db.get(PriorityCondition, condition_id)
+        appointment = db.get(Appointment, appointment_id)
+        assert condition.status == "rejeitada"
+        assert legal_priority_code(appointment.paciente) == "geral"
+        assert appointment.status == "em_espera"
+
+
+def test_priority_validation_before_checkin_is_blocked(client):
+    appointment_id, condition_id, headers = _validation_case(
+        appointment_status="agendado", checked_in=False,
+    )
+    response = client.patch(
+        f"/recepcao/agendamentos/{appointment_id}/condicoes/pcd/validacao",
+        headers=headers,
+        json={"status": "confirmada"},
+    )
+    assert response.status_code == 409
+    assert "após o check-in" in response.json()["detail"]
+    with SessionLocal() as db:
+        assert db.get(PriorityCondition, condition_id).status == "pendente"
+
+
+@pytest.mark.parametrize(
+    ("status", "message"),
+    [
+        ("cancelado", "cancelada"),
+        ("concluido", "concluída"),
+        ("falta", "ausência"),
+        ("em_triagem", "aguarda triagem"),
+        ("em_atendimento", "aguarda triagem"),
+    ],
+)
+def test_priority_validation_in_incompatible_appointment_is_blocked(
+    client, status, message,
+):
+    appointment_id, condition_id, headers = _validation_case(
+        appointment_status=status,
+    )
+    response = client.patch(
+        f"/recepcao/agendamentos/{appointment_id}/condicoes/pcd/validacao",
+        headers=headers,
+        json={"status": "confirmada"},
+    )
+    assert response.status_code == 409
+    assert message in response.json()["detail"]
+    with SessionLocal() as db:
+        assert db.get(PriorityCondition, condition_id).status == "pendente"
+
+
+def test_only_reception_can_validate_priority_condition(client):
+    appointment_id, condition_id, reception_headers = _validation_case()
+    path = f"/recepcao/agendamentos/{appointment_id}/condicoes/pcd/validacao"
+    with SessionLocal() as db:
+        users = []
+        for index, role in enumerate(
+            ["paciente", "enfermagem", "medico", "administrador"], start=1,
+        ):
+            user = User(
+                nome=f"Perfil {role}", cpf=f"70000000{index:03d}",
+                email=f"{role}@example.test", senha_hash="hash",
+                perfil=role, ativo=True,
+            )
+            db.add(user)
+            users.append(user)
+        db.flush()
+        other_headers = [_headers(user) for user in users]
+        db.commit()
+
+    for headers in other_headers:
+        response = client.patch(
+            path, headers=headers, json={"status": "confirmada"},
+        )
+        assert response.status_code == 403
+    with SessionLocal() as db:
+        assert db.get(PriorityCondition, condition_id).status == "pendente"
+
+    allowed = client.patch(
+        path, headers=reception_headers, json={"status": "confirmada"},
+    )
+    assert allowed.status_code == 200
+
+
+def test_concurrent_priority_validations_have_one_consistent_winner(client):
+    appointment_id, condition_id, headers = _validation_case()
+    path = f"/recepcao/agendamentos/{appointment_id}/condicoes/pcd/validacao"
+    ready = Barrier(2)
+
+    def validate(status: str):
+        ready.wait(timeout=5)
+        return client.patch(path, headers=headers, json={"status": status})
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        confirmed = pool.submit(validate, "confirmada")
+        rejected = pool.submit(validate, "rejeitada")
+        responses = [confirmed.result(timeout=10), rejected.result(timeout=10)]
+
+    assert sorted(response.status_code for response in responses) == [200, 409]
+    winner = next(response for response in responses if response.status_code == 200)
+    with SessionLocal() as db:
+        condition = db.get(PriorityCondition, condition_id)
+        histories = list(db.scalars(select(PriorityConditionHistory).where(
+            PriorityConditionHistory.condicao_prioritaria_id == condition_id,
+        )))
+        audits = list(db.scalars(select(AuditLog).where(
+            AuditLog.acao == "validar_condicao_prioritaria",
+            AuditLog.registro_id == condition_id,
+        )))
+        assert condition.status in {"confirmada", "rejeitada"}
+        assert winner.json()["legal_priority"] == (
+            "pcd" if condition.status == "confirmada" else "geral"
+        )
+        assert [event.status_novo for event in histories].count(condition.status) == 1
+        assert len(audits) == 1
+        assert f'"consulta_id": {appointment_id}' in audits[0].detalhes
+        assert f'"resultado": "{condition.status}"' in audits[0].detalhes
 
 
 def test_migration_repairs_false_elderly_and_keeps_true_elderly(client):

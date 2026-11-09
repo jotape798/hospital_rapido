@@ -5,7 +5,7 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
@@ -336,6 +336,23 @@ def validate_priority_condition(
     db: Session = Depends(get_db),
 ):
     row = _appointment_or_404(db, appointment_id)
+    terminal_messages = {
+        "cancelado": "Consulta cancelada não permite validação de prioridade",
+        "concluido": "Consulta concluída não permite validação de prioridade",
+        "falta": "Consulta com ausência registrada não permite validação de prioridade",
+    }
+    if row.status in terminal_messages:
+        raise HTTPException(409, terminal_messages[row.status])
+    if row.chegada_em is None:
+        raise HTTPException(
+            409,
+            "Validação de prioridade permitida somente após o check-in",
+        )
+    if row.status != "em_espera":
+        raise HTTPException(
+            409,
+            "Validação de prioridade permitida somente enquanto a consulta aguarda triagem",
+        )
     condition = db.scalar(select(PriorityCondition).where(
         PriorityCondition.paciente_id == row.paciente_id,
         PriorityCondition.condicao == condition_name,
@@ -343,12 +360,31 @@ def validate_priority_condition(
     if not condition:
         raise HTTPException(404, "Condição prioritária não informada pelo paciente")
     previous = condition.status
-    if previous == payload.status:
-        return _appointment_payload(db, row)
+    if previous != "pendente":
+        raise HTTPException(
+            409,
+            "Somente condição prioritária pendente pode ser confirmada ou rejeitada",
+        )
     now = clock.now_sao_paulo_naive()
-    condition.status = payload.status
-    condition.validada_por = actor.id
-    condition.validada_em = now
+    changed = db.execute(
+        update(PriorityCondition)
+        .where(
+            PriorityCondition.id == condition.id,
+            PriorityCondition.status == "pendente",
+        )
+        .values(
+            status=payload.status,
+            validada_por=actor.id,
+            validada_em=now,
+        )
+        .execution_options(synchronize_session=False)
+    )
+    if changed.rowcount != 1:
+        db.rollback()
+        raise HTTPException(
+            409,
+            "Somente condição prioritária pendente pode ser confirmada ou rejeitada",
+        )
     db.add(PriorityConditionHistory(
         condicao_prioritaria_id=condition.id,
         status_anterior=previous,
@@ -364,8 +400,10 @@ def validate_priority_condition(
         condition.id,
         {
             "condicao": condition_name,
+            "consulta_id": appointment_id,
             "status_anterior": previous,
             "status_novo": payload.status,
+            "resultado": payload.status,
         },
     )
     db.commit()
