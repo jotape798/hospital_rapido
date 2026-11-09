@@ -53,6 +53,8 @@ class FakeStaffApi extends ApiService {
   int checkIns = 0;
   int classifications = 0;
   int calls = 0;
+  int receptionLoads = 0;
+  int nursingLoads = 0;
   int priorityValidationCalls = 0;
   bool initialTriageCompleted = false;
   String receptionStatus = 'agendado';
@@ -77,6 +79,7 @@ class FakeStaffApi extends ApiService {
       int? professionalId,
       String? status,
       String? patient}) async {
+    receptionLoads++;
     if (failReceptionLoad) {
       throw const ApiException('Não foi possível comunicar com a UBS.');
     }
@@ -113,6 +116,7 @@ class FakeStaffApi extends ApiService {
   @override
   Future<List<AdminAppointment>> nursingQueue(
       {DateTime? day, String? specialty, String? status, String? risk}) async {
+    nursingLoads++;
     if (failNursingLoad) {
       throw const ApiException('Não foi possível comunicar com a UBS.');
     }
@@ -258,6 +262,56 @@ void main() {
     semantics.dispose();
     expect(find.byKey(const Key('staff-results-region')), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'recepção atualiza a cada cinco segundos, preserva dados e cancela timer',
+      (tester) async {
+    ApiService.session =
+        const Session('token', 'Recepção Fictícia', 'recepcao', []);
+    final api = FakeStaffApi(false);
+    await tester.pumpWidget(UbsApp(home: StaffDashboard(api: api)));
+    await tester.pump();
+    expect(api.receptionLoads, 1);
+    expect(find.text('Paciente Fictício'), findsOneWidget);
+
+    final pending = Completer<void>();
+    api.nextReceptionRequest = pending;
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(api.receptionLoads, 2);
+    await tester.pump(const Duration(seconds: 5));
+    expect(api.receptionLoads, 2);
+    pending.complete();
+    await tester.pump();
+
+    api.failReceptionLoad = true;
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(api.receptionLoads, 3);
+    expect(find.text('Paciente Fictício'), findsOneWidget);
+    expect(find.textContaining('podem estar desatualizados'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    final loadsAfterDispose = api.receptionLoads;
+    await tester.pump(const Duration(seconds: 5));
+    expect(api.receptionLoads, loadsAfterDispose);
+  });
+
+  testWidgets('enfermagem atualiza a fila a cada cinco segundos',
+      (tester) async {
+    ApiService.session =
+        const Session('token', 'Enfermagem Fictícia', 'enfermagem', []);
+    final api = FakeStaffApi(true);
+    await tester.pumpWidget(UbsApp(home: StaffDashboard(api: api)));
+    await tester.pump();
+    expect(api.nursingLoads, 1);
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(api.nursingLoads, 2);
+
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('reception_compact_collapses_filters_without_hiding_checkin',

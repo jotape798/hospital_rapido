@@ -11,6 +11,8 @@ class StaffDashboard extends StatefulWidget {
 class _StaffDashboardState extends State<StaffDashboard> {
   late final ApiService api = widget.api ?? ApiService();
   final search = TextEditingController();
+  final scrollController = ScrollController();
+  Timer? refreshTimer;
   DateTime day = DateTime.now();
   Map<String, dynamic> summary = {};
   List<AdminAppointment> items = [];
@@ -31,18 +33,22 @@ class _StaffDashboardState extends State<StaffDashboard> {
   void initState() {
     super.initState();
     load();
+    refreshTimer =
+        Timer.periodic(const Duration(seconds: 5), (_) => load(silent: true));
   }
 
   @override
   void dispose() {
+    refreshTimer?.cancel();
     search.dispose();
+    scrollController.dispose();
     super.dispose();
   }
 
-  Future<void> load() async {
-    if (working) return;
+  Future<void> load({bool silent = false}) async {
+    if (!mounted || working) return;
     working = true;
-    if (!loading && mounted) setState(() {});
+    if (!silent && !loading) setState(() {});
     try {
       if (isNursing) {
         final result = await Future.wait([
@@ -78,6 +84,18 @@ class _StaffDashboardState extends State<StaffDashboard> {
       }
       loadError = null;
     } on ApiException catch (e) {
+      if (e.statusCode == 401) {
+        refreshTimer?.cancel();
+        await ApiService.logout();
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginPage()),
+              (_) => false);
+        }
+        return;
+      }
+      if (silent && items.isNotEmpty) return;
       loadError = e.message;
     } finally {
       working = false;
@@ -136,6 +154,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
       false;
 
   Future<void> _logout() async {
+    refreshTimer?.cancel();
     await ApiService.logout();
     if (mounted) {
       Navigator.pushAndRemoveUntil(context,
@@ -355,6 +374,7 @@ class _StaffDashboardState extends State<StaffDashboard> {
             : RefreshIndicator(
                 onRefresh: load,
                 child: SingleChildScrollView(
+                    controller: scrollController,
                     physics: const AlwaysScrollableScrollPhysics(),
                     child: Column(children: [
                       if (isNursing) ...[

@@ -10,6 +10,7 @@ class MedicalDashboard extends StatefulWidget {
 
 class _MedicalDashboardState extends State<MedicalDashboard> {
   late final ApiService api = widget.api ?? ApiService();
+  final scrollController = ScrollController();
   Timer? refreshTimer;
   List<MedicalAppointment> queue = [];
   bool loading = true, working = false;
@@ -20,17 +21,18 @@ class _MedicalDashboardState extends State<MedicalDashboard> {
     super.initState();
     load();
     refreshTimer =
-        Timer.periodic(const Duration(seconds: 4), (_) => load(silent: true));
+        Timer.periodic(const Duration(seconds: 5), (_) => load(silent: true));
   }
 
   @override
   void dispose() {
     refreshTimer?.cancel();
+    scrollController.dispose();
     super.dispose();
   }
 
   Future<void> load({bool silent = false}) async {
-    if (working) return;
+    if (!mounted || working) return;
     working = true;
     try {
       final result = await api.medicalQueue();
@@ -42,6 +44,18 @@ class _MedicalDashboardState extends State<MedicalDashboard> {
       });
     } on ApiException catch (e) {
       if (!mounted) return;
+      if (e.statusCode == 401) {
+        refreshTimer?.cancel();
+        await ApiService.logout();
+        if (mounted) {
+          Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginPage()),
+              (_) => false);
+        }
+        return;
+      }
+      if (silent && queue.isNotEmpty) return;
       setState(() {
         error = e.message;
         loading = false;
@@ -53,6 +67,7 @@ class _MedicalDashboardState extends State<MedicalDashboard> {
   }
 
   Future<void> _logout() async {
+    refreshTimer?.cancel();
     await ApiService.logout();
     if (mounted) {
       Navigator.pushAndRemoveUntil(context,
@@ -98,7 +113,7 @@ class _MedicalDashboardState extends State<MedicalDashboard> {
         ]),
         body: loading
             ? const Center(child: CircularProgressIndicator())
-            : error != null
+            : error != null && queue.isEmpty
                 ? AppErrorState(
                     message: error!,
                     actionLabel: 'Tentar novamente',
@@ -106,6 +121,7 @@ class _MedicalDashboardState extends State<MedicalDashboard> {
                 : RefreshIndicator(
                     onRefresh: load,
                     child: ListView(
+                        controller: scrollController,
                         physics: const AlwaysScrollableScrollPhysics(),
                         children: [
                           AppSurfaceCard(

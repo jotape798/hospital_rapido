@@ -24,6 +24,7 @@ class FakePatientApi extends ApiService {
   final List<int>? availableHours;
   bool offline = false, expired = false;
   int summaryCalls = 0;
+  int appointmentCalls = 0;
   int bookings = 0;
   int cancellations = 0;
   int professionalSpecialtyCalls = 0;
@@ -71,8 +72,10 @@ class FakePatientApi extends ApiService {
   }
 
   @override
-  Future<List<Appointment>> appointments() async =>
-      hasAppointment ? [item] : [];
+  Future<List<Appointment>> appointments() async {
+    appointmentCalls++;
+    return hasAppointment ? [item] : [];
+  }
   @override
   Future<List<Map<String, dynamic>>> specialties() async => emptySpecialties
       ? []
@@ -130,6 +133,16 @@ class FakePatientApi extends ApiService {
 }
 
 void main() {
+  test('todos os status oficiais possuem rótulo textual', () {
+    expect(statusLabel('agendado'), 'Agendada');
+    expect(statusLabel('em_espera'), 'Check-in realizado');
+    expect(statusLabel('em_triagem'), 'Em triagem');
+    expect(statusLabel('em_atendimento'), 'Em atendimento');
+    expect(statusLabel('concluido'), 'Concluída');
+    expect(statusLabel('cancelado'), 'Cancelada');
+    expect(statusLabel('falta'), 'Falta');
+  });
+
   test('especialidades usam apresentação canônica sem duplicar opções', () {
     expect(specialtyDisplayName('Clínica gera'), 'Clínica Geral');
     expect(specialtyDisplayName('Clínica geral'), 'Clínica Geral');
@@ -578,7 +591,8 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('dashboard mostra paciente, próxima consulta e navegação desktop',
+  testWidgets(
+      'status do paciente atualiza em cinco segundos, recupera de erro e cancela timer',
       (tester) async {
     tester.view.physicalSize = const Size(1100, 850);
     tester.view.devicePixelRatio = 1;
@@ -590,15 +604,44 @@ void main() {
     expect(find.text('Olá, Victor!'), findsOneWidget);
     expect(find.text('Dra. Ana Souza'), findsOneWidget);
     expect(find.text('Minhas consultas'), findsOneWidget);
+    expect(api.summaryCalls, 1);
+    expect(api.appointmentCalls, 1);
     await tester.tap(find.text('Acompanhar status'));
     await tester.pump();
     expect(find.text('Atualização automática a cada cinco segundos.'),
         findsOneWidget);
+
     api.status = 'em_espera';
     await tester.pump(const Duration(seconds: 5));
     await tester.pump();
     expect(find.text('Check-in realizado'), findsWidgets);
-    expect(api.summaryCalls, greaterThan(1));
+    expect(api.summaryCalls, 2);
+    expect(api.appointmentCalls, 2,
+        reason: 'O temporizador deve consultar /appointments/me uma vez.');
+
+    api
+      ..offline = true
+      ..status = 'em_triagem';
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(api.summaryCalls, 3);
+    expect(api.appointmentCalls, 3);
+    expect(find.text('Check-in realizado'), findsWidgets,
+        reason: 'Um erro temporário deve preservar o último estado válido.');
+
+    api.offline = false;
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(api.summaryCalls, 4);
+    expect(api.appointmentCalls, 4);
+    expect(find.text('Em triagem'), findsWidgets,
+        reason: 'A consulta periódica deve continuar após o erro.');
+
+    await tester.pumpWidget(const MaterialApp(home: SizedBox.shrink()));
+    await tester.pump(const Duration(seconds: 10));
+    expect(api.summaryCalls, 4,
+        reason: 'O temporizador deve ser cancelado ao sair da tela.');
+    expect(api.appointmentCalls, 4);
     expect(tester.takeException(), isNull);
   });
 

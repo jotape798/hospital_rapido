@@ -31,11 +31,15 @@ MedicalAppointment medicalAppointment(String status) =>
 class FakeMedicalApi extends ApiService {
   MedicalAppointment item = medicalAppointment('em_triagem');
   int starts = 0, completions = 0, loads = 0;
+  bool failQueue = false;
   String? submittedSummary;
 
   @override
   Future<List<MedicalAppointment>> medicalQueue() async {
     loads++;
+    if (failQueue) {
+      throw const ApiException('Falha temporária simulada.');
+    }
     return [item];
   }
 
@@ -115,6 +119,32 @@ void main() {
     expect(tester.takeException(), isNull);
 
     await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets(
+      'fila médica atualiza a cada cinco segundos e preserva dados em falha',
+      (tester) async {
+    final api = FakeMedicalApi();
+    await tester.pumpWidget(UbsApp(home: MedicalDashboard(api: api)));
+    await tester.pump();
+    expect(api.loads, 1);
+    expect(find.text('Paciente Triado'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(api.loads, 2);
+
+    api.failQueue = true;
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(api.loads, 3);
+    expect(find.text('Paciente Triado'), findsOneWidget);
+    expect(find.text('Falha temporária simulada.'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+    final loadsAfterDispose = api.loads;
+    await tester.pump(const Duration(seconds: 5));
+    expect(api.loads, loadsAfterDispose);
   });
 
   testWidgets('care_requires_summary_before_completion', (tester) async {
