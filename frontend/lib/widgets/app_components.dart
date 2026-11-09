@@ -29,30 +29,29 @@ class AppActionButton extends StatelessWidget {
             foregroundColor: colors.onError,
           )
         : null;
+    final accessibleLabel =
+        busy ? '${semanticLabel ?? label}, carregando' : semanticLabel ?? label;
     final button = FilledButton(
       style: style,
       onPressed: busy ? null : onPressed,
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        if (busy)
-          const SizedBox.square(
-            dimension: 20,
-            child: CircularProgressIndicator(strokeWidth: 2),
-          )
-        else
-          Icon(icon ?? Icons.arrow_forward),
-        const SizedBox(width: AppSpacing.sm),
-        Flexible(child: Text(busy ? 'Aguarde…' : label)),
-      ]),
+      child: Semantics(
+        label: accessibleLabel,
+        liveRegion: busy,
+        excludeSemantics: true,
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          if (busy)
+            const SizedBox.square(
+              dimension: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          else
+            Icon(icon ?? Icons.arrow_forward),
+          const SizedBox(width: AppSpacing.sm),
+          Flexible(child: Text(busy ? 'Aguarde…' : label)),
+        ]),
+      ),
     );
-    return Semantics(
-      button: true,
-      enabled: !busy && onPressed != null,
-      liveRegion: busy,
-      label: busy
-          ? '${semanticLabel ?? label}, carregando'
-          : semanticLabel ?? label,
-      child: expand ? SizedBox(width: double.infinity, child: button) : button,
-    );
+    return expand ? SizedBox(width: double.infinity, child: button) : button;
   }
 }
 

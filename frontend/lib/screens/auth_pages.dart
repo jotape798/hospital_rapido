@@ -109,19 +109,18 @@ class _LoginPageState extends State<LoginPage> {
                     const Divider(height: 32),
                     const Text('Ainda não tem uma conta?',
                         textAlign: TextAlign.center),
-                    Semantics(
-                        button: true,
-                        label: 'Criar cadastro',
-                        excludeSemantics: true,
-                        child: OutlinedButton.icon(
-                            onPressed: () => Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                    settings:
-                                        const RouteSettings(name: '/register'),
-                                    builder: (_) => const RegisterPage())),
-                            icon: const Icon(Icons.person_add_alt_1),
-                            label: const Text('Cadastrar-se')))
+                    OutlinedButton.icon(
+                        onPressed: () => Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                                settings:
+                                    const RouteSettings(name: '/register'),
+                                builder: (_) => const RegisterPage())),
+                        icon: const Icon(Icons.person_add_alt_1),
+                        label: Semantics(
+                            label: 'Criar cadastro',
+                            excludeSemantics: true,
+                            child: const Text('Cadastrar-se')))
                   ]))));
 }
 

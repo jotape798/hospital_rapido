@@ -79,6 +79,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Timer? refreshTimer;
   final specialtySearch = TextEditingController();
   final queueSearch = TextEditingController();
+  final adminScrollFocusNode = FocusNode(debugLabel: 'admin-scroll-region');
+  final adminScrollControllers = {
+    for (final section in AdminSection.values) section: ScrollController(),
+  };
   DateTime queueDay = DateTime.now();
   String? queueSpecialty, queueStatus, queueRisk;
   int? queueProfessionalId;
@@ -97,6 +101,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
     refreshTimer?.cancel();
     specialtySearch.dispose();
     queueSearch.dispose();
+    adminScrollFocusNode.dispose();
+    for (final controller in adminScrollControllers.values) {
+      controller.dispose();
+    }
     super.dispose();
   }
 
@@ -296,9 +304,76 @@ class _AdminDashboardState extends State<AdminDashboard> {
     };
   }
 
-  Widget _title(String title, String subtitle, {Widget? action}) =>
-      ResponsivePageHeader(
-          title: title, subtitle: subtitle, primaryAction: action);
+  bool adminScrollRegionFocused = false;
+
+  ScrollController get adminScrollController =>
+      adminScrollControllers[section]!;
+
+  KeyEventResult _handleAdminScrollKey(FocusNode _, KeyEvent event) {
+    if (event is! KeyDownEvent || !adminScrollController.hasClients) {
+      return KeyEventResult.ignored;
+    }
+    final position = adminScrollController.position;
+    final key = event.logicalKey;
+    final double target;
+    if (key == LogicalKeyboardKey.arrowDown) {
+      target = position.pixels + 48;
+    } else if (key == LogicalKeyboardKey.arrowUp) {
+      target = position.pixels - 48;
+    } else if (key == LogicalKeyboardKey.pageDown) {
+      target = position.pixels + position.viewportDimension * .8;
+    } else if (key == LogicalKeyboardKey.pageUp) {
+      target = position.pixels - position.viewportDimension * .8;
+    } else if (key == LogicalKeyboardKey.home) {
+      target = position.minScrollExtent;
+    } else if (key == LogicalKeyboardKey.end) {
+      target = position.maxScrollExtent;
+    } else {
+      return KeyEventResult.ignored;
+    }
+    adminScrollController.animateTo(
+      target.clamp(position.minScrollExtent, position.maxScrollExtent),
+      duration: const Duration(milliseconds: 120),
+      curve: Curves.easeOut,
+    );
+    return KeyEventResult.handled;
+  }
+
+  Widget _title(String title, String subtitle, {Widget? action}) {
+    final header = ResponsivePageHeader(
+        title: title, subtitle: subtitle, primaryAction: action);
+    if (action != null) return header;
+    return Focus(
+      key: const Key('admin-scroll-region-focus'),
+      focusNode: adminScrollFocusNode,
+      onKeyEvent: _handleAdminScrollKey,
+      onFocusChange: (focused) {
+        if (adminScrollRegionFocused != focused) {
+          setState(() => adminScrollRegionFocused = focused);
+        }
+      },
+      child: Semantics(
+        container: true,
+        focusable: true,
+        label: 'Conteúdo rolável: $title. $subtitle',
+        hint: 'Use as setas para percorrer o conteúdo',
+        excludeSemantics: true,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 120),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: adminScrollRegionFocused
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.transparent,
+              width: 2,
+            ),
+          ),
+          child: header,
+        ),
+      ),
+    );
+  }
 
   Widget _overview() {
     final s = summary!;
@@ -322,28 +397,31 @@ class _AdminDashboardState extends State<AdminDashboard> {
       ('Faltas', s.absent, Icons.person_off_outlined, const Color(0xFFB42318)),
       ('Vagas disponíveis', s.available, Icons.event_seat_outlined, green),
     ];
-    return ListView(children: [
-      _title('Visão do dia', 'Indicadores reais das consultas de hoje.'),
-      const SizedBox(height: 20),
-      LayoutBuilder(builder: (_, c) {
-        final width = c.maxWidth >= 900
-            ? (c.maxWidth - 32) / 3
-            : c.maxWidth >= 560
-                ? (c.maxWidth - 16) / 2
-                : c.maxWidth;
-        return Wrap(spacing: 16, runSpacing: 16, children: [
-          for (final item in cards)
-            SizedBox(
-                width: width,
-                child: _metric(item.$1, item.$2, item.$3, item.$4))
+    return ListView(
+        key: const PageStorageKey('admin-overview-scroll'),
+        controller: adminScrollController,
+        children: [
+          _title('Visão do dia', 'Indicadores reais das consultas de hoje.'),
+          const SizedBox(height: 20),
+          LayoutBuilder(builder: (_, c) {
+            final width = c.maxWidth >= 900
+                ? (c.maxWidth - 32) / 3
+                : c.maxWidth >= 560
+                    ? (c.maxWidth - 16) / 2
+                    : c.maxWidth;
+            return Wrap(spacing: 16, runSpacing: 16, children: [
+              for (final item in cards)
+                SizedBox(
+                    width: width,
+                    child: _metric(item.$1, item.$2, item.$3, item.$4))
+            ]);
+          }),
+          const SizedBox(height: 22),
+          InfoPanel(
+              icon: Icons.verified_user_outlined,
+              text:
+                  'As ações administrativas são validadas no servidor e registradas no histórico sem senhas, hashes ou CPF completo.')
         ]);
-      }),
-      const SizedBox(height: 22),
-      InfoPanel(
-          icon: Icons.verified_user_outlined,
-          text:
-              'As ações administrativas são validadas no servidor e registradas no histórico sem senhas, hashes ou CPF completo.')
-    ]);
   }
 
   Widget _metric(String label, int value, IconData icon, Color color) => Card(
@@ -378,207 +456,215 @@ class _AdminDashboardState extends State<AdminDashboard> {
       checkinOnly: section == AdminSection.checkin,
       onChanged: load);
 
-  Widget _queue() =>
-      ListView(padding: const EdgeInsets.only(bottom: 24), children: [
-        _title('Fila de atendimento',
-            'Ordenada pelo backend por risco, prioridade legal e chegada.'),
-        const SizedBox(height: AppSpacing.md),
-        Semantics(
-          key: const Key('admin-queue-filter-region'),
-          container: true,
-          label: 'Filtros da fila de atendimento',
-          child: AppSurfaceCard(
-            child: LayoutBuilder(builder: (context, constraints) {
-              final fieldWidth = responsiveFilterWidth(constraints.maxWidth);
-              return Wrap(
-                spacing: AppSpacing.sm,
-                runSpacing: AppSpacing.sm,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  SizedBox(
-                    width: fieldWidth,
-                    child: Semantics(
-                      textField: true,
-                      label: 'Buscar paciente na fila por nome ou CPF',
-                      child: TextField(
-                        key: const Key('admin-queue-search'),
-                        controller: queueSearch,
-                        textInputAction: TextInputAction.search,
-                        onSubmitted: (_) => _applyQueueFilters(),
-                        decoration: InputDecoration(
-                          labelText: 'Paciente',
-                          hintText: 'Nome ou CPF',
-                          prefixIcon:
-                              const ExcludeSemantics(child: Icon(Icons.search)),
-                          suffixIcon: IconButton(
-                            tooltip: 'Buscar paciente',
-                            onPressed:
-                                queueFiltering ? null : _applyQueueFilters,
-                            icon: const Icon(Icons.arrow_forward),
+  Widget _queue() => ListView(
+          key: const PageStorageKey('admin-queue-scroll'),
+          controller: adminScrollController,
+          padding: const EdgeInsets.only(bottom: 24),
+          children: [
+            _title('Fila de atendimento',
+                'Ordenada pelo backend por risco, prioridade legal e chegada.'),
+            const SizedBox(height: AppSpacing.md),
+            Semantics(
+              key: const Key('admin-queue-filter-region'),
+              container: true,
+              label: 'Filtros da fila de atendimento',
+              child: AppSurfaceCard(
+                child: LayoutBuilder(builder: (context, constraints) {
+                  final fieldWidth =
+                      responsiveFilterWidth(constraints.maxWidth);
+                  return Wrap(
+                    spacing: AppSpacing.sm,
+                    runSpacing: AppSpacing.sm,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: fieldWidth,
+                        child: Semantics(
+                          textField: true,
+                          label: 'Buscar paciente na fila por nome ou CPF',
+                          child: TextField(
+                            key: const Key('admin-queue-search'),
+                            controller: queueSearch,
+                            textInputAction: TextInputAction.search,
+                            onSubmitted: (_) => _applyQueueFilters(),
+                            decoration: InputDecoration(
+                              labelText: 'Paciente',
+                              hintText: 'Nome ou CPF',
+                              prefixIcon: const ExcludeSemantics(
+                                  child: Icon(Icons.search)),
+                              suffixIcon: IconButton(
+                                tooltip: 'Buscar paciente',
+                                onPressed:
+                                    queueFiltering ? null : _applyQueueFilters,
+                                icon: const Icon(Icons.arrow_forward),
+                              ),
+                            ),
                           ),
                         ),
                       ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: fieldWidth,
-                    child: DropdownButtonFormField<String>(
-                      key: ValueKey('admin-queue-specialty-$queueSpecialty'),
-                      initialValue: queueSpecialty,
-                      isExpanded: true,
-                      itemHeight: null,
-                      decoration:
-                          const InputDecoration(labelText: 'Especialidade'),
-                      items: [
-                        const DropdownMenuItem(
-                            value: null, child: Text('Todas')),
-                        for (final value in specialties)
-                          DropdownMenuItem(
-                            value: value['name'].toString(),
-                            child: Text(
-                                specialtyDisplayName(value['name'].toString()),
-                                maxLines: 2,
-                                softWrap: true),
-                          ),
-                      ],
-                      onChanged: queueFiltering
-                          ? null
-                          : (value) {
-                              setState(() => queueSpecialty = value);
-                              _applyQueueFilters();
-                            },
-                    ),
-                  ),
-                  SizedBox(
-                    width: fieldWidth,
-                    child: DropdownButtonFormField<int>(
-                      key: ValueKey(
-                          'admin-queue-professional-$queueProfessionalId'),
-                      initialValue: queueProfessionalId,
-                      isExpanded: true,
-                      itemHeight: null,
-                      decoration:
-                          const InputDecoration(labelText: 'Profissional'),
-                      items: [
-                        const DropdownMenuItem(
-                            value: null, child: Text('Todos')),
-                        for (final value in professionals)
-                          DropdownMenuItem(
-                            value: value['id'] as int,
-                            child: Text(value['name'].toString(),
-                                maxLines: 2, softWrap: true),
-                          ),
-                      ],
-                      onChanged: queueFiltering
-                          ? null
-                          : (value) {
-                              setState(() => queueProfessionalId = value);
-                              _applyQueueFilters();
-                            },
-                    ),
-                  ),
-                  SizedBox(
-                    width: fieldWidth,
-                    child: DropdownButtonFormField<String>(
-                      key: ValueKey('admin-queue-status-$queueStatus'),
-                      initialValue: queueStatus,
-                      isExpanded: true,
-                      decoration: const InputDecoration(labelText: 'Status'),
-                      items: const [
-                        DropdownMenuItem(value: null, child: Text('Todos')),
-                        DropdownMenuItem(
-                            value: 'em_espera', child: Text('Em espera')),
-                        DropdownMenuItem(
-                            value: 'em_triagem', child: Text('Em triagem')),
-                        DropdownMenuItem(
-                            value: 'em_atendimento',
-                            child: Text('Em atendimento')),
-                      ],
-                      onChanged: queueFiltering
-                          ? null
-                          : (value) {
-                              setState(() => queueStatus = value);
-                              _applyQueueFilters();
-                            },
-                    ),
-                  ),
-                  SizedBox(
-                    width: fieldWidth,
-                    child: DropdownButtonFormField<String>(
-                      key: ValueKey('admin-queue-risk-$queueRisk'),
-                      initialValue: queueRisk,
-                      isExpanded: true,
-                      itemHeight: null,
-                      decoration: const InputDecoration(
-                          labelText: 'Classificação de risco'),
-                      items: [
-                        const DropdownMenuItem(
-                            value: null, child: Text('Todas')),
-                        for (final item in RiskClassification.options)
-                          DropdownMenuItem(
-                            value: item.$1,
-                            child: AppRiskFilterItem(risk: item.$1),
-                          ),
-                      ],
-                      onChanged: queueFiltering
-                          ? null
-                          : (value) {
-                              setState(() => queueRisk = value);
-                              _applyQueueFilters();
-                            },
-                    ),
-                  ),
-                  SizedBox(
-                    width: fieldWidth,
-                    child: OutlinedButton.icon(
-                      key: const Key('admin-queue-date'),
-                      onPressed: queueFiltering
-                          ? null
-                          : () async {
-                              final picked = await showDatePicker(
-                                context: context,
-                                initialDate: queueDay,
-                                firstDate: DateTime(2020),
-                                lastDate: DateTime.now()
-                                    .add(const Duration(days: 730)),
-                              );
-                              if (picked != null) {
-                                setState(() => queueDay = picked);
-                                await _applyQueueFilters();
-                              }
-                            },
-                      icon: const Icon(Icons.calendar_today_outlined),
-                      label: Text('Data: ${showOnlyDate(queueDay)}'),
-                    ),
-                  ),
-                  SizedBox(
-                    width: fieldWidth,
-                    child: OutlinedButton.icon(
-                      key: const Key('admin-queue-clear-filters'),
-                      onPressed: queueFiltering ? null : _clearQueueFilters,
-                      icon: const Icon(Icons.filter_alt_off_outlined),
-                      label: const Text('Limpar filtros'),
-                    ),
-                  ),
-                ],
-              );
-            }),
-          ),
-        ),
-        if (queueFiltering) ...[
-          const SizedBox(height: AppSpacing.sm),
-          const LinearProgressIndicator(
-              semanticsLabel: 'Atualizando fila com os filtros selecionados'),
-        ],
-        const SizedBox(height: AppSpacing.md),
-        if (!queueFiltering && queue.isEmpty)
-          const _EmptyState(
-              'Nenhum paciente corresponde aos filtros selecionados.'),
-        for (final item in queue) ...[
-          _queueCard(item),
-          const SizedBox(height: AppSpacing.sm),
-        ],
-      ]);
+                      SizedBox(
+                        width: fieldWidth,
+                        child: DropdownButtonFormField<String>(
+                          key:
+                              ValueKey('admin-queue-specialty-$queueSpecialty'),
+                          initialValue: queueSpecialty,
+                          isExpanded: true,
+                          itemHeight: null,
+                          decoration:
+                              const InputDecoration(labelText: 'Especialidade'),
+                          items: [
+                            const DropdownMenuItem(
+                                value: null, child: Text('Todas')),
+                            for (final value in specialties)
+                              DropdownMenuItem(
+                                value: value['name'].toString(),
+                                child: Text(
+                                    specialtyDisplayName(
+                                        value['name'].toString()),
+                                    maxLines: 2,
+                                    softWrap: true),
+                              ),
+                          ],
+                          onChanged: queueFiltering
+                              ? null
+                              : (value) {
+                                  setState(() => queueSpecialty = value);
+                                  _applyQueueFilters();
+                                },
+                        ),
+                      ),
+                      SizedBox(
+                        width: fieldWidth,
+                        child: DropdownButtonFormField<int>(
+                          key: ValueKey(
+                              'admin-queue-professional-$queueProfessionalId'),
+                          initialValue: queueProfessionalId,
+                          isExpanded: true,
+                          itemHeight: null,
+                          decoration:
+                              const InputDecoration(labelText: 'Profissional'),
+                          items: [
+                            const DropdownMenuItem(
+                                value: null, child: Text('Todos')),
+                            for (final value in professionals)
+                              DropdownMenuItem(
+                                value: value['id'] as int,
+                                child: Text(value['name'].toString(),
+                                    maxLines: 2, softWrap: true),
+                              ),
+                          ],
+                          onChanged: queueFiltering
+                              ? null
+                              : (value) {
+                                  setState(() => queueProfessionalId = value);
+                                  _applyQueueFilters();
+                                },
+                        ),
+                      ),
+                      SizedBox(
+                        width: fieldWidth,
+                        child: DropdownButtonFormField<String>(
+                          key: ValueKey('admin-queue-status-$queueStatus'),
+                          initialValue: queueStatus,
+                          isExpanded: true,
+                          decoration:
+                              const InputDecoration(labelText: 'Status'),
+                          items: const [
+                            DropdownMenuItem(value: null, child: Text('Todos')),
+                            DropdownMenuItem(
+                                value: 'em_espera', child: Text('Em espera')),
+                            DropdownMenuItem(
+                                value: 'em_triagem', child: Text('Em triagem')),
+                            DropdownMenuItem(
+                                value: 'em_atendimento',
+                                child: Text('Em atendimento')),
+                          ],
+                          onChanged: queueFiltering
+                              ? null
+                              : (value) {
+                                  setState(() => queueStatus = value);
+                                  _applyQueueFilters();
+                                },
+                        ),
+                      ),
+                      SizedBox(
+                        width: fieldWidth,
+                        child: DropdownButtonFormField<String>(
+                          key: ValueKey('admin-queue-risk-$queueRisk'),
+                          initialValue: queueRisk,
+                          isExpanded: true,
+                          itemHeight: null,
+                          decoration: const InputDecoration(
+                              labelText: 'Classificação de risco'),
+                          items: [
+                            const DropdownMenuItem(
+                                value: null, child: Text('Todas')),
+                            for (final item in RiskClassification.options)
+                              DropdownMenuItem(
+                                value: item.$1,
+                                child: AppRiskFilterItem(risk: item.$1),
+                              ),
+                          ],
+                          onChanged: queueFiltering
+                              ? null
+                              : (value) {
+                                  setState(() => queueRisk = value);
+                                  _applyQueueFilters();
+                                },
+                        ),
+                      ),
+                      SizedBox(
+                        width: fieldWidth,
+                        child: OutlinedButton.icon(
+                          key: const Key('admin-queue-date'),
+                          onPressed: queueFiltering
+                              ? null
+                              : () async {
+                                  final picked = await showDatePicker(
+                                    context: context,
+                                    initialDate: queueDay,
+                                    firstDate: DateTime(2020),
+                                    lastDate: DateTime.now()
+                                        .add(const Duration(days: 730)),
+                                  );
+                                  if (picked != null) {
+                                    setState(() => queueDay = picked);
+                                    await _applyQueueFilters();
+                                  }
+                                },
+                          icon: const Icon(Icons.calendar_today_outlined),
+                          label: Text('Data: ${showOnlyDate(queueDay)}'),
+                        ),
+                      ),
+                      SizedBox(
+                        width: fieldWidth,
+                        child: OutlinedButton.icon(
+                          key: const Key('admin-queue-clear-filters'),
+                          onPressed: queueFiltering ? null : _clearQueueFilters,
+                          icon: const Icon(Icons.filter_alt_off_outlined),
+                          label: const Text('Limpar filtros'),
+                        ),
+                      ),
+                    ],
+                  );
+                }),
+              ),
+            ),
+            if (queueFiltering) ...[
+              const SizedBox(height: AppSpacing.sm),
+              const LinearProgressIndicator(
+                  semanticsLabel:
+                      'Atualizando fila com os filtros selecionados'),
+            ],
+            const SizedBox(height: AppSpacing.md),
+            if (!queueFiltering && queue.isEmpty)
+              const _EmptyState(
+                  'Nenhum paciente corresponde aos filtros selecionados.'),
+            for (final item in queue) ...[
+              _queueCard(item),
+              const SizedBox(height: AppSpacing.sm),
+            ],
+          ]);
 
   Widget _queueCard(Map<String, dynamic> item) {
     final position = '${item['position'] ?? '-'}';
@@ -836,104 +922,112 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget _grids() => _GridAdminView(
       api: api, grids: grids, specialties: specialties, onChanged: load);
 
-  Widget _history() => ListView(children: [
-        _title('Histórico e auditoria',
-            'Validações presenciais e ações administrativas, sem permitir alterar a idade.'),
-        const SizedBox(height: 16),
-        if (priorityValidations.isNotEmpty) ...[
-          Text('Validações de prioridade',
-              style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 8),
-          for (final item in priorityValidations)
-            Card(
-                child: ListTile(
-                    leading: const Icon(Icons.verified_user_outlined),
-                    title: Text('${item['patient']} • ${item['condition']}'),
-                    subtitle: Text([
-                      'Estado: ${item['status']}',
-                      if (item['validated_by'] != null)
-                        'Responsável: ${item['validated_by']}',
-                      if (item['validated_at'] != null)
-                        'Data: ${showDate(DateTime.parse(item['validated_at']))}',
-                      'Eventos no histórico: ${(item['history'] as List? ?? const []).length}'
-                    ].join('\n')))),
-          const SizedBox(height: 16),
-        ],
-        if (audit.isEmpty)
-          const _EmptyState('Nenhuma ação administrativa registrada.'),
-        for (final item in audit)
-          Semantics(
-              container: true,
-              label: 'Registro de auditoria: ${item['action']}',
-              child: Card(
-                  child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: LayoutBuilder(builder: (context, constraints) {
-                        final content = Row(
-                            key: const Key('audit-content'),
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const Icon(Icons.history),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                  child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                    Text(item['action']
-                                        .toString()
-                                        .replaceAll('_', ' ')),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                        '${item['actor']} • ${item['record_type']} #${item['record_id'] ?? '-'}')
-                                  ]))
-                            ]);
-                        final metadata = _AuditMetadata(
-                            createdAt: item['created_at'].toString());
-                        final compact = constraints.maxWidth < 620 ||
-                            MediaQuery.textScalerOf(context).scale(16) > 18;
-                        if (compact) {
-                          return Column(
-                              crossAxisAlignment: CrossAxisAlignment.stretch,
-                              children: [
-                                content,
-                                const SizedBox(height: 12),
-                                Align(
-                                    alignment: Alignment.centerLeft,
-                                    child: metadata)
-                              ]);
-                        }
-                        return Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(child: content),
-                              const SizedBox(width: 20),
-                              metadata
-                            ]);
-                      }))))
-      ]);
+  Widget _history() => ListView(
+      key: const PageStorageKey('admin-history-scroll'),
+          controller: adminScrollController,
+          children: [
+            _title('Histórico e auditoria',
+                'Validações presenciais e ações administrativas, sem permitir alterar a idade.'),
+            const SizedBox(height: 16),
+            if (priorityValidations.isNotEmpty) ...[
+              Text('Validações de prioridade',
+                  style: Theme.of(context).textTheme.titleLarge),
+              const SizedBox(height: 8),
+              for (final item in priorityValidations)
+                Card(
+                    child: ListTile(
+                        leading: const Icon(Icons.verified_user_outlined),
+                        title:
+                            Text('${item['patient']} • ${item['condition']}'),
+                        subtitle: Text([
+                          'Estado: ${item['status']}',
+                          if (item['validated_by'] != null)
+                            'Responsável: ${item['validated_by']}',
+                          if (item['validated_at'] != null)
+                            'Data: ${showDate(DateTime.parse(item['validated_at']))}',
+                          'Eventos no histórico: ${(item['history'] as List? ?? const []).length}'
+                        ].join('\n')))),
+              const SizedBox(height: 16),
+            ],
+            if (audit.isEmpty)
+              const _EmptyState('Nenhuma ação administrativa registrada.'),
+            for (final item in audit)
+              Semantics(
+                  container: true,
+                  label: 'Registro de auditoria: ${item['action']}',
+                  child: Card(
+                      child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: LayoutBuilder(builder: (context, constraints) {
+                            final content = Row(
+                                key: const Key('audit-content'),
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const Icon(Icons.history),
+                                  const SizedBox(width: 14),
+                                  Expanded(
+                                      child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                        Text(item['action']
+                                            .toString()
+                                            .replaceAll('_', ' ')),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                            '${item['actor']} • ${item['record_type']} #${item['record_id'] ?? '-'}')
+                                      ]))
+                                ]);
+                            final metadata = _AuditMetadata(
+                                createdAt: item['created_at'].toString());
+                            final compact = constraints.maxWidth < 620 ||
+                                MediaQuery.textScalerOf(context).scale(16) > 18;
+                            if (compact) {
+                              return Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    content,
+                                    const SizedBox(height: 12),
+                                    Align(
+                                        alignment: Alignment.centerLeft,
+                                        child: metadata)
+                                  ]);
+                            }
+                            return Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(child: content),
+                                  const SizedBox(width: 20),
+                                  metadata
+                                ]);
+                          }))))
+          ]);
 
-  Widget _settings() => ListView(children: [
-        _title('Configurações',
-            'Preferências do painel e informações de segurança.'),
-        const SizedBox(height: 16),
-        const InfoPanel(
-            icon: Icons.accessibility_new,
-            text:
-                'Use o menu de acessibilidade para ajustar A−, A, A+ e alto contraste. As preferências permanecem durante a navegação.'),
-        const SizedBox(height: 12),
-        const InfoPanel(
-            icon: Icons.password,
-            text:
-                'A alteração obrigatória de senha provisória no primeiro acesso ainda não faz parte desta versão. O administrador pode redefinir o acesso com uma nova senha provisória.'),
-        const SizedBox(height: 18),
-        Align(
-            alignment: Alignment.centerLeft,
-            child: FilledButton.icon(
-                onPressed: _createAnotherAdmin,
-                icon: const Icon(Icons.admin_panel_settings),
-                label: const Text('Criar outro administrador')))
-      ]);
+  Widget _settings() => ListView(
+      key: const PageStorageKey('admin-settings-scroll'),
+          controller: adminScrollController,
+          children: [
+            _title('Configurações',
+                'Preferências do painel e informações de segurança.'),
+            const SizedBox(height: 16),
+            const InfoPanel(
+                icon: Icons.accessibility_new,
+                text:
+                    'Use o menu de acessibilidade para ajustar A−, A, A+ e alto contraste. As preferências permanecem durante a navegação.'),
+            const SizedBox(height: 12),
+            const InfoPanel(
+                icon: Icons.password,
+                text:
+                    'A alteração obrigatória de senha provisória no primeiro acesso ainda não faz parte desta versão. O administrador pode redefinir o acesso com uma nova senha provisória.'),
+            const SizedBox(height: 18),
+            Align(
+                alignment: Alignment.centerLeft,
+                child: FilledButton.icon(
+                    onPressed: _createAnotherAdmin,
+                    icon: const Icon(Icons.admin_panel_settings),
+                    label: const Text('Criar outro administrador')))
+          ]);
 
   Future<void> _createAnotherAdmin() async {
     final form = GlobalKey<FormState>();

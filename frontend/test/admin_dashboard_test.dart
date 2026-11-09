@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:ubs_saude/main.dart';
@@ -398,6 +399,83 @@ void main() {
         findsOneWidget);
     expect(find.text('Consultas agendadas'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('região administrativa rolável recebe foco e rola pelo teclado',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(768, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    final semantics = tester.ensureSemantics();
+    await tester.pumpWidget(UbsApp(home: AdminDashboard(api: FakeAdminApi())));
+    await tester.pumpAndSettle();
+
+    final focusRegion = find.byKey(const Key('admin-scroll-region-focus'));
+    expect(focusRegion, findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp(r'^Conteúdo rolável: Visão do dia')),
+        findsOneWidget);
+    final focusNode = tester.widget<Focus>(focusRegion).focusNode!;
+    focusNode.requestFocus();
+    await tester.pumpAndSettle();
+    expect(focusNode.hasFocus, isTrue);
+
+    final module = find.byKey(const Key('admin-module-content'));
+    final scrollable =
+        find.descendant(of: module, matching: find.byType(Scrollable)).first;
+    final position = tester.state<ScrollableState>(scrollable).position;
+    expect(position.pixels, 0);
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowDown);
+    await tester.pumpAndSettle();
+    expect(position.pixels, greaterThan(0));
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.shiftLeft);
+    await tester.pumpAndSettle();
+    expect(focusNode.hasFocus, isFalse);
+    expect(tester.takeException(), isNull);
+    semantics.dispose();
+  });
+
+  testWidgets('módulos administrativos mantêm rolagens independentes',
+      (tester) async {
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    for (final size in const [
+      Size(390, 600),
+      Size(768, 600),
+      Size(1366, 600),
+    ]) {
+      await tester.binding.setSurfaceSize(size);
+      await tester.pumpWidget(UbsApp(
+          home: AdminDashboard(
+              key: ValueKey('admin-scroll-$size'), api: FakeAdminApi())));
+      await tester.pumpAndSettle();
+
+      Finder moduleScrollable() => find
+          .descendant(
+              of: find.byKey(const Key('admin-module-content')),
+              matching: find.byType(Scrollable))
+          .first;
+
+      await tester.drag(moduleScrollable(), const Offset(0, -420));
+      await tester.pumpAndSettle();
+      final overviewPosition =
+          tester.state<ScrollableState>(moduleScrollable()).position.pixels;
+      expect(overviewPosition, greaterThan(0), reason: 'largura $size');
+
+      await selectAdminDestination(
+          tester, 'Atendimento', 'Fila de atendimento');
+      final queuePosition =
+          tester.state<ScrollableState>(moduleScrollable()).position.pixels;
+      expect(queuePosition, 0,
+          reason: 'A fila não deve herdar a rolagem em $size.');
+
+      await selectAdminDestination(tester, 'Atendimento', 'Visão geral');
+      final restoredOverview =
+          tester.state<ScrollableState>(moduleScrollable()).position.pixels;
+      expect(restoredOverview, closeTo(overviewPosition, 1),
+          reason: 'A seção anterior deve preservar sua própria posição.');
+      expect(tester.takeException(), isNull);
+    }
   });
 
   testWidgets('admin_summary_survives_max_text_scale', (tester) async {

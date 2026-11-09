@@ -800,15 +800,13 @@ class _StaffDashboardState extends State<StaffDashboard> {
                             label: 'Check-in',
                             semanticLabel: 'Registrar check-in'),
                       if (isReception && item.status == 'agendado')
-                        Semantics(
-                            button: true,
-                            label: 'Registrar no-show ou falta',
-                            excludeSemantics: true,
-                            child: OutlinedButton.icon(
-                                onPressed:
-                                    working ? null : () => _absence(item),
-                                icon: const Icon(Icons.person_off_outlined),
-                                label: const Text('Não compareceu'))),
+                        OutlinedButton.icon(
+                            onPressed: working ? null : () => _absence(item),
+                            icon: const Icon(Icons.person_off_outlined),
+                            label: Semantics(
+                                label: 'Registrar no-show ou falta',
+                                excludeSemantics: true,
+                                child: const Text('Não compareceu'))),
                       if (isNursing &&
                           const {'em_espera', 'em_triagem'}
                               .contains(item.status))

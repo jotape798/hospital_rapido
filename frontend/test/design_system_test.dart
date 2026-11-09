@@ -1,3 +1,5 @@
+import 'dart:ui' show SemanticsAction;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ubs_saude/main.dart';
@@ -18,6 +20,7 @@ void main() {
   });
 
   testWidgets('primary_button_is_at_least_48px', (tester) async {
+    final semantics = tester.ensureSemantics();
     await tester.pumpWidget(UbsApp(
       home: Scaffold(
         body: AppActionButton(
@@ -30,6 +33,18 @@ void main() {
 
     expect(tester.getSize(find.byType(FilledButton)).height,
         greaterThanOrEqualTo(48));
+    expect(find.bySemanticsLabel('Continuar'), findsOneWidget);
+    expect(
+        tester
+            .getSemantics(find.bySemanticsLabel('Continuar'))
+            .getSemanticsData()
+            .hasAction(SemanticsAction.tap),
+        isTrue);
+    final semanticButton = tester.widget<Semantics>(find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics && widget.properties.label == 'Continuar'));
+    expect(semanticButton.excludeSemantics, isTrue);
+    semantics.dispose();
   });
 
   testWidgets('botões compartilhados expõem estados legíveis e consistentes',

@@ -186,9 +186,10 @@ void main() {
         find.byWidgetPredicate((widget) =>
             widget is Semantics &&
             widget.properties.label == 'Enviar, carregando' &&
-            widget.properties.enabled == false &&
             widget.properties.liveRegion == true),
         findsOneWidget);
+    expect(tester.widget<FilledButton>(find.byType(FilledButton)).onPressed,
+        isNull);
 
     semantics.dispose();
   });

@@ -74,31 +74,31 @@ class _AccessibilityMenuState extends State<AccessibilityMenu> {
   @override
   Widget build(BuildContext context) {
     final compact = MediaQuery.sizeOf(context).width < 600;
+    final menuLabel = open
+        ? 'Fechar preferências de acessibilidade'
+        : 'Abrir preferências de acessibilidade';
     return Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Semantics(
               key: const Key('accessibility-menu-semantics'),
-              button: true,
               expanded: open,
-              label: open
-                  ? 'Fechar preferências de acessibilidade'
-                  : 'Abrir preferências de acessibilidade',
-              excludeSemantics: true,
-              onTap: () => setState(() => open = !open),
               child: compact
-                  ? Tooltip(
-                      message: 'Preferências de acessibilidade',
-                      child: IconButton.filled(
-                          key: const Key('accessibility-menu-button'),
-                          onPressed: () => setState(() => open = !open),
-                          icon: const Icon(Icons.accessibility_new)))
+                  ? IconButton.filled(
+                      key: const Key('accessibility-menu-button'),
+                      tooltip: menuLabel,
+                      onPressed: () => setState(() => open = !open),
+                      icon: const Icon(Icons.accessibility_new))
                   : FilledButton.icon(
                       key: const Key('accessibility-menu-button'),
                       onPressed: () => setState(() => open = !open),
                       icon: const Icon(Icons.accessibility_new),
-                      label: const Text('Preferências de acessibilidade'))),
+                      label: Semantics(
+                          label: menuLabel,
+                          excludeSemantics: true,
+                          child:
+                              const Text('Preferências de acessibilidade')))),
           if (open)
             Card(
                 child: SizedBox(
@@ -119,24 +119,24 @@ class _AccessibilityMenuState extends State<AccessibilityMenu> {
                                   style:
                                       TextStyle(fontWeight: FontWeight.bold)),
                               Row(children: [
-                                Semantics(
-                                    button: true,
-                                    label: 'Diminuir tamanho da fonte',
-                                    child: OutlinedButton(
-                                        key: const Key(
-                                            'accessibility-font-decrease'),
-                                        onPressed: accessibility.decreaseFont,
+                                OutlinedButton(
+                                    key: const Key(
+                                        'accessibility-font-decrease'),
+                                    onPressed: accessibility.decreaseFont,
+                                    child: Semantics(
+                                        label: 'Diminuir tamanho da fonte',
+                                        excludeSemantics: true,
                                         child: const Text('A-'))),
                                 Expanded(
                                     child: TextButton(
                                         onPressed: () =>
                                             accessibility.setFontScale(1),
                                         child: const Text('A'))),
-                                Semantics(
-                                    button: true,
-                                    label: 'Aumentar tamanho da fonte',
-                                    child: OutlinedButton(
-                                        onPressed: accessibility.increaseFont,
+                                OutlinedButton(
+                                    onPressed: accessibility.increaseFont,
+                                    child: Semantics(
+                                        label: 'Aumentar tamanho da fonte',
+                                        excludeSemantics: true,
                                         child: const Text('A+')))
                               ]),
                               SwitchListTile(

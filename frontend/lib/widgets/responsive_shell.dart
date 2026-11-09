@@ -77,19 +77,15 @@ class ResponsiveAppShell extends StatelessWidget {
           Positioned(
             top: AppSpacing.sm,
             left: AppSpacing.md,
-            child: Semantics(
-              button: true,
-              label: 'Abrir menu de navegação',
-              child: IconButton.filledTonal(
-                key: const Key('wide-navigation-menu-button'),
-                tooltip: 'Abrir menu de navegação',
-                constraints: const BoxConstraints.tightFor(
-                  width: AppSizes.minTouchTarget,
-                  height: AppSizes.minTouchTarget,
-                ),
-                onPressed: () => _showWideNavigation(context),
-                icon: const Icon(Icons.menu),
+            child: IconButton.filledTonal(
+              key: const Key('wide-navigation-menu-button'),
+              tooltip: 'Abrir menu de navegação',
+              constraints: const BoxConstraints.tightFor(
+                width: AppSizes.minTouchTarget,
+                height: AppSizes.minTouchTarget,
               ),
+              onPressed: () => _showWideNavigation(context),
+              icon: const Icon(Icons.menu),
             ),
           ),
         ],
@@ -278,32 +274,30 @@ class ResponsiveAppShell extends StatelessWidget {
     final destination = destinations[index];
     return Tooltip(
       message: _destinationTooltip(destination),
-      child: Semantics(
-        button: true,
-        selected: index == selectedIndex,
-        label: _destinationSemanticLabel(destination),
-        excludeSemantics: true,
-        child: Material(
-          color: Colors.transparent,
-          child: ListTile(
-            key: Key('grouped-destination-$index'),
-            minTileHeight: AppSizes.minTouchTarget,
-            dense: true,
-            selected: index == selectedIndex,
-            selectedTileColor: Theme.of(context).colorScheme.primaryContainer,
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            leading: Icon(destination.icon,
-                color: accessibility.highContrast ? null : destination.color),
-            title: Text(destination.label, maxLines: 2, softWrap: true),
-            subtitle: destination.description == null
-                ? null
-                : Text(destination.description!,
-                    maxLines: 2, overflow: TextOverflow.ellipsis),
-            onTap: onDestinationSelected == null
-                ? null
-                : () => onDestinationSelected!(index),
+      child: Material(
+        color: Colors.transparent,
+        child: ListTile(
+          key: Key('grouped-destination-$index'),
+          minTileHeight: AppSizes.minTouchTarget,
+          dense: true,
+          selected: index == selectedIndex,
+          selectedTileColor: Theme.of(context).colorScheme.primaryContainer,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          leading: Icon(destination.icon,
+              color: accessibility.highContrast ? null : destination.color),
+          title: Semantics(
+            label: _destinationSemanticLabel(destination),
+            excludeSemantics: true,
+            child: Text(destination.label, maxLines: 2, softWrap: true),
           ),
+          subtitle: destination.description == null
+              ? null
+              : Text(destination.description!,
+                  maxLines: 2, overflow: TextOverflow.ellipsis),
+          onTap: onDestinationSelected == null
+              ? null
+              : () => onDestinationSelected!(index),
         ),
       ),
     );
@@ -343,30 +337,28 @@ class ResponsiveAppShell extends StatelessWidget {
     final destination = destinations[index];
     return Tooltip(
       message: _destinationTooltip(destination),
-      child: Semantics(
-        button: true,
+      child: ListTile(
+        contentPadding: grouped
+            ? const EdgeInsetsDirectional.only(start: 36, end: 12)
+            : null,
+        minTileHeight: AppSizes.minTouchTarget * accessibility.fontSizeScale,
         selected: index == selectedIndex,
-        label: _destinationSemanticLabel(destination),
-        excludeSemantics: true,
-        child: ListTile(
-          contentPadding: grouped
-              ? const EdgeInsetsDirectional.only(start: 36, end: 12)
-              : null,
-          minTileHeight: AppSizes.minTouchTarget * accessibility.fontSizeScale,
-          selected: index == selectedIndex,
-          leading: Icon(destination.icon,
-              color: accessibility.highContrast ? null : destination.color),
-          title: Text(destination.label, maxLines: 2, softWrap: true),
-          subtitle: destination.description == null
-              ? null
-              : Text(destination.description!, maxLines: 3, softWrap: true),
-          onTap: onDestinationSelected == null
-              ? null
-              : () {
-                  Navigator.pop(dialogContext);
-                  onDestinationSelected!(index);
-                },
+        leading: Icon(destination.icon,
+            color: accessibility.highContrast ? null : destination.color),
+        title: Semantics(
+          label: _destinationSemanticLabel(destination),
+          excludeSemantics: true,
+          child: Text(destination.label, maxLines: 2, softWrap: true),
         ),
+        subtitle: destination.description == null
+            ? null
+            : Text(destination.description!, maxLines: 3, softWrap: true),
+        onTap: onDestinationSelected == null
+            ? null
+            : () {
+                Navigator.pop(dialogContext);
+                onDestinationSelected!(index);
+              },
       ),
     );
   }
@@ -387,19 +379,15 @@ class ResponsiveAppShell extends StatelessWidget {
         Positioned(
           top: AppSpacing.sm,
           left: AppSpacing.md,
-          child: Semantics(
-            button: true,
-            label: 'Abrir menu de navegação',
-            child: IconButton.filledTonal(
-              key: const Key('wide-navigation-menu-button'),
-              tooltip: 'Abrir menu de navegação',
-              constraints: const BoxConstraints.tightFor(
-                width: AppSizes.minTouchTarget,
-                height: AppSizes.minTouchTarget,
-              ),
-              onPressed: () => _showWideNavigation(context),
-              icon: const Icon(Icons.menu),
+          child: IconButton.filledTonal(
+            key: const Key('wide-navigation-menu-button'),
+            tooltip: 'Abrir menu de navegação',
+            constraints: const BoxConstraints.tightFor(
+              width: AppSizes.minTouchTarget,
+              height: AppSizes.minTouchTarget,
             ),
+            onPressed: () => _showWideNavigation(context),
+            icon: const Icon(Icons.menu),
           ),
         ),
       ]);
@@ -413,15 +401,15 @@ class ResponsiveAppShell extends StatelessWidget {
                 AppSpacing.lg, 0, AppSpacing.lg, AppSpacing.md),
             child: Tooltip(
               message: destinations[selectedIndex].label,
-              child: Semantics(
-                button: true,
-                label:
-                    'Abrir menu de seções. Seção atual: ${destinations[selectedIndex].label}',
-                child: OutlinedButton.icon(
-                  key: const Key('responsive-compact-destination-picker'),
-                  onPressed: () => _showWideNavigation(context),
-                  icon: const Icon(Icons.menu),
-                  label: Text(destinations[selectedIndex].label,
+              child: OutlinedButton.icon(
+                key: const Key('responsive-compact-destination-picker'),
+                onPressed: () => _showWideNavigation(context),
+                icon: const Icon(Icons.menu),
+                label: Semantics(
+                  label:
+                      'Abrir menu de seções. Seção atual: ${destinations[selectedIndex].label}',
+                  excludeSemantics: true,
+                  child: Text(destinations[selectedIndex].label,
                       maxLines: 2, softWrap: true),
                 ),
               ),
