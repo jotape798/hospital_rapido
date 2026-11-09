@@ -6,7 +6,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.core import clock
@@ -32,6 +32,7 @@ from app.models import (
 from app.schemas import PriorityValidationInput
 
 router = APIRouter(tags=["recepção e enfermagem"])
+_MISSING_RISK = object()
 
 class RiskInput(BaseModel):
     level: RiskLevel
@@ -53,8 +54,38 @@ def _risk_record(db: Session, appointment_id: int) -> RiskClassification | None:
     )
 
 
-def _appointment_payload(db: Session, row: Appointment) -> dict:
-    risk = _risk_record(db, row.id)
+def _risk_records(
+    db: Session, appointment_ids: list[int]
+) -> dict[int, RiskClassification]:
+    if not appointment_ids:
+        return {}
+    return {
+        item.consulta_id: item
+        for item in db.scalars(
+            select(RiskClassification).where(
+                RiskClassification.consulta_id.in_(appointment_ids)
+            )
+        )
+    }
+
+
+def _appointment_options():
+    return (
+        joinedload(Appointment.paciente)
+        .selectinload(User.condicoes_prioritarias)
+        .joinedload(PriorityCondition.responsavel_validacao),
+        joinedload(Appointment.medico),
+    )
+
+
+def _appointment_payload(
+    db: Session,
+    row: Appointment,
+    risk: RiskClassification | None | object = _MISSING_RISK,
+) -> dict:
+    if risk is _MISSING_RISK:
+        risk = _risk_record(db, row.id)
+    risk_record = risk if isinstance(risk, RiskClassification) else None
     return {
         "id": row.id,
         "scheduled_at": row.data_horario,
@@ -66,16 +97,22 @@ def _appointment_payload(db: Session, row: Appointment) -> dict:
         "status": row.status,
         "legal_priority": legal_priority_code(row.paciente),
         "priority_reason": legal_priority_label(row.paciente),
-        "risk_classification": risk.nivel_risco if risk else row.classificacao_risco,
-        "risk_label": RISK_LABELS.get(
-            risk.nivel_risco if risk else row.classificacao_risco or ""
+        "risk_classification": (
+            risk_record.nivel_risco if risk_record else row.classificacao_risco
         ),
-        "triage_observation": risk.observacao if risk else row.triagem_dados,
-        "triage_complaint": risk.queixa_principal if risk else None,
-        "vital_signs": risk.sinais_vitais if risk else None,
+        "risk_label": RISK_LABELS.get(
+            risk_record.nivel_risco
+            if risk_record
+            else row.classificacao_risco or ""
+        ),
+        "triage_observation": (
+            risk_record.observacao if risk_record else row.triagem_dados
+        ),
+        "triage_complaint": risk_record.queixa_principal if risk_record else None,
+        "vital_signs": risk_record.sinais_vitais if risk_record else None,
         "arrived_at": row.chegada_em,
         "missed_at": row.falta_em,
-        "triaged_at": risk.classificado_em if risk else row.triagem_em,
+        "triaged_at": risk_record.classificado_em if risk_record else row.triagem_em,
         "called_at": row.chamado_em,
         "started_at": row.iniciado_em,
         "completed_at": row.concluido_em,
@@ -172,7 +209,7 @@ def _ordered_nursing_rows(db: Session, day: date) -> list[Appointment]:
     start, end = _day_limits(day)
     rows = list(
         db.scalars(
-            select(Appointment).where(
+            select(Appointment).options(*_appointment_options()).where(
                 Appointment.data_horario >= start,
                 Appointment.data_horario < end,
                 Appointment.chegada_em.is_not(None),
@@ -224,7 +261,10 @@ def reception_appointments(
     query = _filtered_day_query(
         day, specialty, professional_id, status, patient
     ).order_by(Appointment.data_horario)
-    return [_appointment_payload(db, row) for row in db.scalars(query).unique()]
+    query = query.options(*_appointment_options())
+    rows = list(db.scalars(query).unique())
+    risks = _risk_records(db, [row.id for row in rows])
+    return [_appointment_payload(db, row, risks.get(row.id)) for row in rows]
 
 
 @router.get("/recepcao/agendamentos/{appointment_id}")
@@ -342,7 +382,7 @@ def nursing_summary(
     start, end = _day_limits(day)
     rows = list(
         db.scalars(
-            select(Appointment).where(
+            select(Appointment).options(*_appointment_options()).where(
                 Appointment.data_horario >= start,
                 Appointment.data_horario < end,
                 Appointment.chegada_em.is_not(None),
@@ -350,9 +390,10 @@ def nursing_summary(
             )
         ).unique()
     )
+    risk_records = _risk_records(db, [row.id for row in rows])
     risks = {key: 0 for key in RISK_LABELS}
     for row in rows:
-        record = _risk_record(db, row.id)
+        record = risk_records.get(row.id)
         level = record.nivel_risco if record else row.classificacao_risco
         if level in risks:
             risks[level] += 1
@@ -375,6 +416,7 @@ def nursing_queue(
 ):
     _authorized_nurse(actor, db)
     ordered_rows = _ordered_nursing_rows(db, day)
+    risk_records = _risk_records(db, [row.id for row in ordered_rows])
     initial_rows = _initial_triage_rows(ordered_rows)
     first_id = initial_rows[0].id if initial_rows else None
     rows = ordered_rows
@@ -392,7 +434,7 @@ def nursing_queue(
             raise HTTPException(422, "Classificação de risco inválida")
         filtered = []
         for row in rows:
-            record = _risk_record(db, row.id)
+            record = risk_records.get(row.id)
             level = record.nivel_risco if record else row.classificacao_risco
             if level == risk:
                 filtered.append(row)
@@ -400,7 +442,7 @@ def nursing_queue(
 
     result = []
     for row in rows:
-        payload = _appointment_payload(db, row)
+        payload = _appointment_payload(db, row, risk_records.get(row.id))
         allowed = row.status == "em_triagem" or row.id == first_id
         payload["triage_action_allowed"] = allowed
         payload["triage_block_reason"] = (

@@ -5,7 +5,7 @@ from datetime import date, datetime, time, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.core.database import get_db
 from app.core import clock
@@ -23,6 +23,7 @@ from app.services.appointments import (
 )
 
 router = APIRouter(prefix="/medico", tags=["medico"])
+_MISSING_RISK = object()
 
 def _age(patient: User) -> int | None:
     return full_age(patient.data_nascimento) if patient.data_nascimento else None
@@ -36,8 +37,32 @@ def _risk(db: Session, appointment_id: int) -> RiskClassification | None:
     )
 
 
+def _risks(db: Session, appointment_ids: list[int]) -> dict[int, RiskClassification]:
+    if not appointment_ids:
+        return {}
+    return {
+        item.consulta_id: item
+        for item in db.scalars(
+            select(RiskClassification).where(
+                RiskClassification.consulta_id.in_(appointment_ids)
+            )
+        )
+    }
+
+
+def _appointment_options():
+    return (
+        joinedload(Appointment.paciente).selectinload(User.condicoes_prioritarias),
+        joinedload(Appointment.medico),
+    )
+
+
 def _authorized_row(db: Session, appointment_id: int, actor: User) -> Appointment:
-    row = db.get(Appointment, appointment_id)
+    row = db.scalar(
+        select(Appointment)
+        .options(*_appointment_options())
+        .where(Appointment.id == appointment_id)
+    )
     if not row:
         raise HTTPException(404, "Atendimento não encontrado")
     if row.medico_id != actor.id:
@@ -59,8 +84,15 @@ def _ensure_triaged(db: Session, row: Appointment) -> RiskClassification:
     return risk
 
 
-def _payload(db: Session, row: Appointment) -> dict:
-    risk = _ensure_triaged(db, row)
+def _payload(
+    db: Session,
+    row: Appointment,
+    risk: RiskClassification | object = _MISSING_RISK,
+) -> dict:
+    if risk is _MISSING_RISK:
+        risk = _ensure_triaged(db, row)
+    if not isinstance(risk, RiskClassification):
+        raise HTTPException(409, "Paciente ainda não possui triagem concluída")
     return {
         "id": row.id,
         "scheduled_at": row.data_horario,
@@ -95,7 +127,7 @@ def medical_queue(
     end = start + timedelta(days=1)
     rows = list(
         db.scalars(
-            select(Appointment).where(
+            select(Appointment).options(*_appointment_options()).where(
                 Appointment.medico_id == actor.id,
                 Appointment.data_horario >= start,
                 Appointment.data_horario < end,
@@ -106,12 +138,16 @@ def medical_queue(
             )
         ).unique()
     )
+    risk_records = _risks(db, [row.id for row in rows])
     eligible = []
     for row in rows:
-        risk = _risk(db, row.id)
+        risk = risk_records.get(row.id)
         if risk and risk.queixa_principal and risk.sinais_vitais:
             eligible.append(row)
-    return [_payload(db, row) for row in sorted(eligible, key=queue_sort_key)]
+    return [
+        _payload(db, row, risk_records[row.id])
+        for row in sorted(eligible, key=queue_sort_key)
+    ]
 
 
 @router.get("/atendimentos/{appointment_id}", response_model=MedicalCareResponse)
