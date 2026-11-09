@@ -965,7 +965,9 @@ def test_complete_official_patient_to_medical_flow(client):
     appointment_id = booked.json()["id"]
     with SessionLocal() as db:
         appointment = db.get(Appointment, appointment_id)
-        appointment.data_horario = datetime.now() + timedelta(hours=1)
+        appointment.data_horario = clock.now_sao_paulo_naive().replace(
+            hour=12, minute=0, second=0, microsecond=0
+        )
         db.commit()
 
     reception_headers = {
