@@ -30,6 +30,7 @@
 **/.pytest-*/
 .test-tmp/
 .superpowers/
+.impeccable/
 **/.venv/
 **/.venv-*/
 **/venv/
