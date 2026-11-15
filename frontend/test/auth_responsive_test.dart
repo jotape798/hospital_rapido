@@ -552,7 +552,7 @@ void main() {
     final fields = find.byType(TextFormField);
     await tester.enterText(fields.at(0), '52998224725');
     await tester.enterText(fields.at(1), 'Paciente@123');
-    final submit = find.text('Entrar →');
+    final submit = find.text('Entrar');
     await tester.tap(submit);
     await tester.tap(submit);
     await tester.pump();

@@ -15,6 +15,7 @@ class FakePatientApi extends ApiService {
     this.emptySpecialties = false,
     this.emptyDates = false,
     this.availableHours,
+    this.priorityConditions = const [],
   });
   bool hasAppointment;
   final String specialtyName;
@@ -22,6 +23,7 @@ class FakePatientApi extends ApiService {
   final bool emptySpecialties;
   final bool emptyDates;
   final List<int>? availableHours;
+  List<Map<String, dynamic>> priorityConditions;
   bool offline = false, expired = false;
   int summaryCalls = 0;
   int appointmentCalls = 0;
@@ -46,7 +48,8 @@ class FakePatientApi extends ApiService {
           'masked_cpf': '***.***.***-25',
           'birth_date': '1990-03-15',
           'email': 'victor@example.test',
-          'phone': '11999998888'
+          'phone': '11999998888',
+          'priority_conditions': priorityConditions,
         },
         'next_appointment': hasAppointment
             ? {
@@ -76,6 +79,7 @@ class FakePatientApi extends ApiService {
     appointmentCalls++;
     return hasAppointment ? [item] : [];
   }
+
   @override
   Future<List<Map<String, dynamic>>> specialties() async => emptySpecialties
       ? []
@@ -853,6 +857,84 @@ void main() {
     await tester.pump();
     expect(find.text('Olá, Victor!'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets(
+      'decisão prioritária confirmada gera aviso único e orientação ao paciente',
+      (tester) async {
+    final api = FakePatientApi(priorityConditions: [
+      {
+        'condition': 'pcd',
+        'status': 'pendente',
+        'reported_at': '2026-11-13T10:00:00'
+      }
+    ]);
+    await tester.pumpWidget(MaterialApp(home: PatientDashboard(api: api)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('wide-navigation-menu-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Perfil').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Aguardando confirmação presencial'), findsOneWidget);
+
+    api.priorityConditions = [
+      {
+        'condition': 'pcd',
+        'status': 'confirmada',
+        'reported_at': '2026-11-13T10:00:00',
+        'validated_at': '2026-11-13T11:15:00'
+      }
+    ];
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+
+    expect(find.byKey(const ValueKey('priority-decision-pcd-confirmada')),
+        findsOneWidget);
+    expect(find.text('Resultado: confirmada'), findsOneWidget);
+    expect(
+        find.text(
+            'A condição foi incluída no cálculo da prioridade dos próximos atendimentos.'),
+        findsOneWidget);
+    const transitionNotice =
+        'PCD confirmada. A condição foi incluída no cálculo da prioridade dos próximos atendimentos.';
+    expect(find.text(transitionNotice), findsOneWidget);
+
+    ScaffoldMessenger.of(tester.element(find.byType(PatientDashboard)))
+        .clearSnackBars();
+    await tester.pumpAndSettle();
+    await tester.pump(const Duration(seconds: 5));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('priority-decision-pcd-confirmada')),
+        findsOneWidget);
+    expect(find.text(transitionNotice), findsNothing,
+        reason: 'A atualização automática não deve repetir o mesmo aviso.');
+  });
+
+  testWidgets('decisão prioritária rejeitada mostra data e efeito',
+      (tester) async {
+    final api = FakePatientApi(priorityConditions: [
+      {
+        'condition': 'gestante',
+        'status': 'rejeitada',
+        'reported_at': '2026-11-13T10:00:00',
+        'validated_at': '2026-11-13T12:30:00'
+      }
+    ]);
+    await tester.pumpWidget(MaterialApp(home: PatientDashboard(api: api)));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('wide-navigation-menu-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Perfil').last);
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('priority-decision-gestante-rejeitada')),
+        findsOneWidget);
+    expect(find.text('Resultado: rejeitada'), findsOneWidget);
+    expect(find.textContaining('Decisão em 13/11 às 12:30'), findsOneWidget);
+    expect(
+        find.text(
+            'A condição não altera sua prioridade de atendimento. Procure a Recepção se precisar de orientação.'),
+        findsOneWidget);
   });
 
   testWidgets('sessão expirada retorna ao login', (tester) async {

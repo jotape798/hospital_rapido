@@ -97,7 +97,7 @@ void main() {
     await tester.pumpWidget(UbsApp(home: MedicalDashboard(api: api)));
     await tester.pumpAndSettle();
 
-    expect(find.text('Painel Médico'), findsOneWidget);
+    expect(find.text('Painel de Atendimento'), findsOneWidget);
     expect(find.text('Dr. Victor Almeida'), findsOneWidget);
     expect(find.byKey(const Key('medical-waiting-count')), findsOneWidget);
     expect(find.text('Paciente Triado'), findsOneWidget);

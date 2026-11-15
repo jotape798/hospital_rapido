@@ -55,10 +55,24 @@ class FakeAdminApi extends ApiService {
   Future<List<Map<String, dynamic>>> allProfessionals() async => [];
 
   @override
-  Future<List<Map<String, dynamic>>> auditHistory() async => [];
+  Future<List<Map<String, dynamic>>> auditHistory(
+          {String? patient,
+          String? professional,
+          DateTime? dateFrom,
+          DateTime? dateTo,
+          String? action,
+          int limit = 100}) async =>
+      [];
 
   @override
-  Future<List<Map<String, dynamic>>> priorityValidations() async => [];
+  Future<List<Map<String, dynamic>>> priorityValidations(
+          {String? patient,
+          String? professional,
+          DateTime? dateFrom,
+          DateTime? dateTo,
+          String? status,
+          int limit = 100}) async =>
+      [];
 
   @override
   Future<List<Map<String, dynamic>>> grids() async => [];
@@ -131,7 +145,14 @@ class FakeAdminContentApi extends FakeAdminApi {
       ];
 
   @override
-  Future<List<Map<String, dynamic>>> auditHistory() async => [
+  Future<List<Map<String, dynamic>>> auditHistory(
+          {String? patient,
+          String? professional,
+          DateTime? dateFrom,
+          DateTime? dateTo,
+          String? action,
+          int limit = 100}) async =>
+      [
         {
           'action': 'usuario_ativado',
           'actor': 'Ana Administradora',
@@ -142,7 +163,14 @@ class FakeAdminContentApi extends FakeAdminApi {
       ];
 
   @override
-  Future<List<Map<String, dynamic>>> priorityValidations() async => [
+  Future<List<Map<String, dynamic>>> priorityValidations(
+          {String? patient,
+          String? professional,
+          DateTime? dateFrom,
+          DateTime? dateTo,
+          String? status,
+          int limit = 100}) async =>
+      [
         {
           'patient': 'Paciente Fictícia',
           'condition': 'pcd',
@@ -155,6 +183,62 @@ class FakeAdminContentApi extends FakeAdminApi {
           ],
         }
       ];
+}
+
+class FakeHistoryFilterApi extends FakeAdminContentApi {
+  String? recordedPatient, professional, action, status;
+  DateTime? dateFrom, dateTo;
+  int auditCalls = 0;
+  bool deny = false;
+
+  @override
+  Future<List<Map<String, dynamic>>> auditHistory(
+      {String? patient,
+      String? professional,
+      DateTime? dateFrom,
+      DateTime? dateTo,
+      String? action,
+      int limit = 100}) async {
+    auditCalls++;
+    if (deny) {
+      throw const ApiException('Acesso exclusivo do Administrador.',
+          statusCode: 403);
+    }
+    recordedPatient = patient;
+    this.professional = professional;
+    this.dateFrom = dateFrom;
+    this.dateTo = dateTo;
+    this.action = action;
+    return super.auditHistory(
+        patient: patient,
+        professional: professional,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+        action: action,
+        limit: limit);
+  }
+
+  @override
+  Future<List<Map<String, dynamic>>> priorityValidations(
+      {String? patient,
+      String? professional,
+      DateTime? dateFrom,
+      DateTime? dateTo,
+      String? status,
+      int limit = 100}) async {
+    if (deny) {
+      throw const ApiException('Acesso exclusivo do Administrador.',
+          statusCode: 403);
+    }
+    this.status = status;
+    return super.priorityValidations(
+        patient: patient,
+        professional: professional,
+        dateFrom: dateFrom,
+        dateTo: dateTo,
+        status: status,
+        limit: limit);
+  }
 }
 
 class FakeAdminQueueApi extends FakeAdminApi {
@@ -869,6 +953,106 @@ void main() {
       tester.getTopLeft(find.byKey(const Key('audit-metadata'))).dy,
       greaterThan(tester.getTopLeft(find.byKey(const Key('audit-content'))).dy),
     );
+  });
+
+  testWidgets('filtros do histórico combinam valores e podem ser limpos',
+      (tester) async {
+    final api = FakeHistoryFilterApi();
+    await tester.pumpWidget(UbsApp(home: AdminDashboard(api: api)));
+    await tester.pumpAndSettle();
+    await selectAdminDestination(tester, 'Governança', 'Histórico');
+    await tester.tap(find.text('Filtros do histórico'));
+    await tester.pumpAndSettle();
+
+    expect(api.recordedPatient, isEmpty);
+    expect(api.professional, isEmpty);
+    await tester.enterText(
+        find.byKey(const Key('admin-history-patient')), 'Paciente Ana');
+    await tester.enterText(
+        find.byKey(const Key('admin-history-professional')), 'Recepção Alice');
+    await tester.enterText(
+        find.byKey(const Key('admin-history-action')), 'chegada_confirmada');
+    tester
+        .widget<DropdownButtonFormField<String>>(
+            find.byKey(const ValueKey('admin-history-status-null')))
+        .onChanged!('rejeitada');
+    await tester.pump();
+    tester
+        .widget<FilledButton>(
+            find.byKey(const Key('admin-history-apply-filters')))
+        .onPressed!();
+    await tester.pumpAndSettle();
+
+    expect(api.recordedPatient, 'Paciente Ana');
+    expect(api.professional, 'Recepção Alice');
+    expect(api.action, 'chegada_confirmada');
+    expect(api.status, 'rejeitada');
+
+    tester
+        .widget<OutlinedButton>(
+            find.byKey(const Key('admin-history-clear-filters')))
+        .onPressed!();
+    await tester.pumpAndSettle();
+    expect(api.recordedPatient, isEmpty);
+    expect(api.professional, isEmpty);
+    expect(api.action, isEmpty);
+    expect(api.status, isNull);
+  });
+
+  testWidgets('histórico bloqueia intervalo de datas invertido no cliente',
+      (tester) async {
+    final api = FakeHistoryFilterApi();
+    await tester.pumpWidget(UbsApp(home: AdminDashboard(api: api)));
+    await tester.pumpAndSettle();
+    await selectAdminDestination(tester, 'Governança', 'Histórico');
+    await tester.tap(find.text('Filtros do histórico'));
+    await tester.pumpAndSettle();
+
+    tester
+        .widget<OutlinedButton>(
+            find.byKey(const Key('admin-history-date-from')))
+        .onPressed!();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('${DateTime.now().day}').last);
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    final yesterday = DateTime.now().subtract(const Duration(days: 1));
+    tester
+        .widget<OutlinedButton>(find.byKey(const Key('admin-history-date-to')))
+        .onPressed!();
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('${yesterday.day}').last);
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    final callsBefore = api.auditCalls;
+    tester
+        .widget<FilledButton>(
+            find.byKey(const Key('admin-history-apply-filters')))
+        .onPressed!();
+    await tester.pump();
+    expect(find.text('A data inicial não pode ser posterior à data final.'),
+        findsOneWidget);
+    expect(api.auditCalls, callsBefore);
+  });
+
+  testWidgets('histórico apresenta acesso proibido devolvido pelo servidor',
+      (tester) async {
+    final api = FakeHistoryFilterApi();
+    await tester.pumpWidget(UbsApp(home: AdminDashboard(api: api)));
+    await tester.pumpAndSettle();
+    await selectAdminDestination(tester, 'Governança', 'Histórico');
+    await tester.tap(find.text('Filtros do histórico'));
+    await tester.pumpAndSettle();
+    api.deny = true;
+
+    tester
+        .widget<FilledButton>(
+            find.byKey(const Key('admin-history-apply-filters')))
+        .onPressed!();
+    await tester.pump();
+    expect(find.text('Acesso exclusivo do Administrador.'), findsOneWidget);
   });
 
   testWidgets('painel administrativo mostra resumo real e menu responsivo',

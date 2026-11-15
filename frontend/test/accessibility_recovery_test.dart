@@ -74,8 +74,8 @@ void main() {
     final cpf = find.byType(TextFormField).first;
     expect(tester.widget<TextFormField>(cpf).controller!.text, '');
     await tester.enterText(cpf, '11111111111');
-    await tester.ensureVisible(find.text('Entrar →'));
-    await tester.tap(find.text('Entrar →'));
+    await tester.ensureVisible(find.text('Entrar'));
+    await tester.tap(find.text('Entrar'));
     await tester.pumpAndSettle();
     expect(
         tester.widget<TextFormField>(cpf).controller!.text, '111.111.111-11');

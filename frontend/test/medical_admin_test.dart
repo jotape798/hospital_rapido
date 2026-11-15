@@ -71,7 +71,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Há Médico ativo para atendimento'), findsOneWidget);
     expect(find.text('Dr. Victor Almeida'), findsOneWidget);
-    expect(find.text('***.***.***-05 • Clínica Geral'), findsOneWidget);
+    expect(find.text('Médico • ***.***.***-05 • Clínica Geral'), findsOneWidget);
 
     await tester.enterText(
         find.byKey(const Key('doctor-search')), '39053344705');

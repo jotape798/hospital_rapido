@@ -94,7 +94,7 @@ class _LoginPageState extends State<LoginPage> {
                                 ? Icons.visibility_off_outlined
                                 : Icons.visibility_outlined))),
                     AppActionButton(
-                        label: 'Entrar →',
+                        label: 'Entrar',
                         semanticLabel: 'Entrar no sistema',
                         icon: Icons.login,
                         onPressed: login,

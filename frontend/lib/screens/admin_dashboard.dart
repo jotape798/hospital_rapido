@@ -79,6 +79,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Timer? refreshTimer;
   final specialtySearch = TextEditingController();
   final queueSearch = TextEditingController();
+  final historyPatientSearch = TextEditingController();
+  final historyProfessionalSearch = TextEditingController();
+  final historyActionSearch = TextEditingController();
   final adminScrollFocusNode = FocusNode(debugLabel: 'admin-scroll-region');
   final adminScrollControllers = {
     for (final section in AdminSection.values) section: ScrollController(),
@@ -86,6 +89,10 @@ class _AdminDashboardState extends State<AdminDashboard> {
   DateTime queueDay = DateTime.now();
   String? queueSpecialty, queueStatus, queueRisk;
   int? queueProfessionalId;
+  DateTime? historyDateFrom, historyDateTo;
+  String? historyStatus;
+  bool historyFiltering = false;
+  bool historyFiltersExpanded = false;
 
   @override
   void initState() {
@@ -101,6 +108,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
     refreshTimer?.cancel();
     specialtySearch.dispose();
     queueSearch.dispose();
+    historyPatientSearch.dispose();
+    historyProfessionalSearch.dispose();
+    historyActionSearch.dispose();
     adminScrollFocusNode.dispose();
     for (final controller in adminScrollControllers.values) {
       controller.dispose();
@@ -150,6 +160,57 @@ class _AdminDashboardState extends State<AdminDashboard> {
     await _applyQueueFilters();
   }
 
+  Future<List<Object>> _fetchHistory() => Future.wait<Object>([
+        api.auditHistory(
+            patient: historyPatientSearch.text,
+            professional: historyProfessionalSearch.text,
+            dateFrom: historyDateFrom,
+            dateTo: historyDateTo,
+            action: historyActionSearch.text),
+        api.priorityValidations(
+            patient: historyPatientSearch.text,
+            professional: historyProfessionalSearch.text,
+            dateFrom: historyDateFrom,
+            dateTo: historyDateTo,
+            status: historyStatus),
+      ]);
+
+  Future<void> _applyHistoryFilters() async {
+    if (historyFiltering) return;
+    if (historyDateFrom != null &&
+        historyDateTo != null &&
+        historyDateFrom!.isAfter(historyDateTo!)) {
+      notice(context, 'A data inicial não pode ser posterior à data final.');
+      return;
+    }
+    setState(() => historyFiltering = true);
+    try {
+      final values = await _fetchHistory();
+      if (mounted) {
+        setState(() {
+          audit = values[0] as List<Map<String, dynamic>>;
+          priorityValidations = values[1] as List<Map<String, dynamic>>;
+        });
+      }
+    } on ApiException catch (e) {
+      if (mounted) notice(context, e.message);
+    } finally {
+      if (mounted) setState(() => historyFiltering = false);
+    }
+  }
+
+  Future<void> _clearHistoryFilters() async {
+    setState(() {
+      historyPatientSearch.clear();
+      historyProfessionalSearch.clear();
+      historyActionSearch.clear();
+      historyDateFrom = null;
+      historyDateTo = null;
+      historyStatus = null;
+    });
+    await _applyHistoryFilters();
+  }
+
   Future<void> load() async {
     if (!mounted) return;
     setState(() {
@@ -192,13 +253,9 @@ class _AdminDashboardState extends State<AdminDashboard> {
           grids = values[0];
           specialties = values[1];
         case AdminSection.history:
-          audit = await api.auditHistory();
-          try {
-            priorityValidations = await api.priorityValidations();
-          } on ApiException {
-            // Mantém compatibilidade com backends anteriores durante atualização.
-            priorityValidations = [];
-          }
+          final values = await _fetchHistory();
+          audit = values[0] as List<Map<String, dynamic>>;
+          priorityValidations = values[1] as List<Map<String, dynamic>>;
         case AdminSection.settings:
           break;
       }
@@ -922,90 +979,243 @@ class _AdminDashboardState extends State<AdminDashboard> {
   Widget _grids() => _GridAdminView(
       api: api, grids: grids, specialties: specialties, onChanged: load);
 
-  Widget _history() => ListView(
+  Widget _historyFilters() => Semantics(
+      key: const Key('admin-history-filter-region'),
+      container: true,
+      label: 'Filtros do histórico e da auditoria',
+      child: AppSurfaceCard(
+          child: Column(children: [
+        ListTile(
+            key: const Key('admin-history-filter-expansion'),
+            title: const Text('Filtros do histórico'),
+            subtitle:
+                const Text('Paciente, profissional, período, ação e status'),
+            trailing: Icon(
+                historyFiltersExpanded ? Icons.expand_less : Icons.expand_more),
+            onTap: () => setState(
+                () => historyFiltersExpanded = !historyFiltersExpanded)),
+        if (historyFiltersExpanded)
+          Padding(
+              padding: const EdgeInsets.only(top: 12),
+              child: LayoutBuilder(builder: (context, constraints) {
+                final fieldWidth = responsiveFilterWidth(constraints.maxWidth);
+                return Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      SizedBox(
+                          width: fieldWidth,
+                          child: TextField(
+                              key: const Key('admin-history-patient'),
+                              controller: historyPatientSearch,
+                              textInputAction: TextInputAction.search,
+                              decoration: const InputDecoration(
+                                  labelText: 'Paciente',
+                                  hintText: 'Nome do paciente',
+                                  prefixIcon: ExcludeSemantics(
+                                      child: Icon(Icons.search))),
+                              onSubmitted: (_) => _applyHistoryFilters())),
+                      SizedBox(
+                          width: fieldWidth,
+                          child: TextField(
+                              key: const Key('admin-history-professional'),
+                              controller: historyProfessionalSearch,
+                              textInputAction: TextInputAction.search,
+                              decoration: const InputDecoration(
+                                  labelText: 'Profissional ou responsável',
+                                  hintText: 'Nome do profissional',
+                                  prefixIcon: ExcludeSemantics(
+                                      child: Icon(Icons.badge_outlined))),
+                              onSubmitted: (_) => _applyHistoryFilters())),
+                      SizedBox(
+                          width: fieldWidth,
+                          child: TextField(
+                              key: const Key('admin-history-action'),
+                              controller: historyActionSearch,
+                              textInputAction: TextInputAction.search,
+                              decoration: const InputDecoration(
+                                  labelText: 'Tipo de ação',
+                                  hintText: 'Ex.: chegada_confirmada'),
+                              onSubmitted: (_) => _applyHistoryFilters())),
+                      SizedBox(
+                          width: fieldWidth,
+                          child: DropdownButtonFormField<String>(
+                              key: ValueKey(
+                                  'admin-history-status-$historyStatus'),
+                              initialValue: historyStatus,
+                              isExpanded: true,
+                              decoration: const InputDecoration(
+                                  labelText: 'Status da condição'),
+                              items: const [
+                                DropdownMenuItem(
+                                    value: null, child: Text('Todos')),
+                                DropdownMenuItem(
+                                    value: 'pendente', child: Text('Pendente')),
+                                DropdownMenuItem(
+                                    value: 'confirmada',
+                                    child: Text('Confirmada')),
+                                DropdownMenuItem(
+                                    value: 'rejeitada',
+                                    child: Text('Rejeitada')),
+                                DropdownMenuItem(
+                                    value: 'retirada', child: Text('Retirada')),
+                              ],
+                              onChanged: historyFiltering
+                                  ? null
+                                  : (value) =>
+                                      setState(() => historyStatus = value))),
+                      SizedBox(
+                          width: fieldWidth,
+                          child: OutlinedButton.icon(
+                              key: const Key('admin-history-date-from'),
+                              onPressed: historyFiltering
+                                  ? null
+                                  : () async {
+                                      final picked = await showDatePicker(
+                                          context: context,
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime.now(),
+                                          initialDate: historyDateFrom ??
+                                              DateTime.now());
+                                      if (picked != null) {
+                                        setState(
+                                            () => historyDateFrom = picked);
+                                      }
+                                    },
+                              icon: const Icon(Icons.date_range_outlined),
+                              label: Text(historyDateFrom == null
+                                  ? 'Data inicial'
+                                  : 'De: ${showOnlyDate(historyDateFrom!)}'))),
+                      SizedBox(
+                          width: fieldWidth,
+                          child: OutlinedButton.icon(
+                              key: const Key('admin-history-date-to'),
+                              onPressed: historyFiltering
+                                  ? null
+                                  : () async {
+                                      final picked = await showDatePicker(
+                                          context: context,
+                                          firstDate: DateTime(2020),
+                                          lastDate: DateTime.now(),
+                                          initialDate:
+                                              historyDateTo ?? DateTime.now());
+                                      if (picked != null) {
+                                        setState(() => historyDateTo = picked);
+                                      }
+                                    },
+                              icon: const Icon(Icons.event_available_outlined),
+                              label: Text(historyDateTo == null
+                                  ? 'Data final'
+                                  : 'Até: ${showOnlyDate(historyDateTo!)}'))),
+                      SizedBox(
+                          width: fieldWidth,
+                          child: FilledButton.icon(
+                              key: const Key('admin-history-apply-filters'),
+                              onPressed: historyFiltering
+                                  ? null
+                                  : _applyHistoryFilters,
+                              icon: const Icon(Icons.filter_alt),
+                              label: const Text('Aplicar filtros'))),
+                      SizedBox(
+                          width: fieldWidth,
+                          child: OutlinedButton.icon(
+                              key: const Key('admin-history-clear-filters'),
+                              onPressed: historyFiltering
+                                  ? null
+                                  : _clearHistoryFilters,
+                              icon: const Icon(Icons.filter_alt_off_outlined),
+                              label: const Text('Limpar filtros'))),
+                      const Text(
+                          'Exibição limitada aos 100 registros mais recentes.'),
+                    ]);
+              }))
+      ])));
+
+  Widget _history() => SingleChildScrollView(
       key: const PageStorageKey('admin-history-scroll'),
-          controller: adminScrollController,
-          children: [
-            _title('Histórico e auditoria',
-                'Validações presenciais e ações administrativas, sem permitir alterar a idade.'),
-            const SizedBox(height: 16),
-            if (priorityValidations.isNotEmpty) ...[
-              Text('Validações de prioridade',
-                  style: Theme.of(context).textTheme.titleLarge),
-              const SizedBox(height: 8),
-              for (final item in priorityValidations)
-                Card(
-                    child: ListTile(
-                        leading: const Icon(Icons.verified_user_outlined),
-                        title:
-                            Text('${item['patient']} • ${item['condition']}'),
-                        subtitle: Text([
-                          'Estado: ${item['status']}',
-                          if (item['validated_by'] != null)
-                            'Responsável: ${item['validated_by']}',
-                          if (item['validated_at'] != null)
-                            'Data: ${showDate(DateTime.parse(item['validated_at']))}',
-                          'Eventos no histórico: ${(item['history'] as List? ?? const []).length}'
-                        ].join('\n')))),
-              const SizedBox(height: 16),
-            ],
-            if (audit.isEmpty)
-              const _EmptyState('Nenhuma ação administrativa registrada.'),
-            for (final item in audit)
-              Semantics(
-                  container: true,
-                  label: 'Registro de auditoria: ${item['action']}',
-                  child: Card(
-                      child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: LayoutBuilder(builder: (context, constraints) {
-                            final content = Row(
-                                key: const Key('audit-content'),
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  const Icon(Icons.history),
-                                  const SizedBox(width: 14),
-                                  Expanded(
-                                      child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                        Text(item['action']
-                                            .toString()
-                                            .replaceAll('_', ' ')),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                            '${item['actor']} • ${item['record_type']} #${item['record_id'] ?? '-'}')
-                                      ]))
-                                ]);
-                            final metadata = _AuditMetadata(
-                                createdAt: item['created_at'].toString());
-                            final compact = constraints.maxWidth < 620 ||
-                                MediaQuery.textScalerOf(context).scale(16) > 18;
-                            if (compact) {
-                              return Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    content,
-                                    const SizedBox(height: 12),
-                                    Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: metadata)
-                                  ]);
-                            }
-                            return Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(child: content),
-                                  const SizedBox(width: 20),
-                                  metadata
-                                ]);
-                          }))))
-          ]);
+      controller: adminScrollController,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        _title('Histórico e auditoria',
+            'Validações presenciais e ações administrativas, sem permitir alterar a idade.'),
+        const SizedBox(height: 16),
+        _historyFilters(),
+        const SizedBox(height: 16),
+        if (priorityValidations.isNotEmpty) ...[
+          Text('Validações de prioridade',
+              style: Theme.of(context).textTheme.titleLarge),
+          const SizedBox(height: 8),
+          for (final item in priorityValidations)
+            Card(
+                child: ListTile(
+                    leading: const Icon(Icons.verified_user_outlined),
+                    title: Text('${item['patient']} • ${item['condition']}'),
+                    subtitle: Text([
+                      'Estado: ${item['status']}',
+                      if (item['validated_by'] != null)
+                        'Responsável: ${item['validated_by']}',
+                      if (item['validated_at'] != null)
+                        'Data: ${showDate(DateTime.parse(item['validated_at']))}',
+                      'Eventos no histórico: ${(item['history'] as List? ?? const []).length}'
+                    ].join('\n')))),
+          const SizedBox(height: 16),
+        ],
+        if (audit.isEmpty)
+          const _EmptyState('Nenhuma ação administrativa registrada.'),
+        for (final item in audit)
+          Semantics(
+              container: true,
+              label: 'Registro de auditoria: ${item['action']}',
+              child: Card(
+                  child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: LayoutBuilder(builder: (context, constraints) {
+                        final content = Row(
+                            key: const Key('audit-content'),
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Icon(Icons.history),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                  child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                    Text(item['action']
+                                        .toString()
+                                        .replaceAll('_', ' ')),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                        '${item['actor']} • ${item['record_type']} #${item['record_id'] ?? '-'}')
+                                  ]))
+                            ]);
+                        final metadata = _AuditMetadata(
+                            createdAt: item['created_at'].toString());
+                        final compact = constraints.maxWidth < 620 ||
+                            MediaQuery.textScalerOf(context).scale(16) > 18;
+                        if (compact) {
+                          return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                content,
+                                const SizedBox(height: 12),
+                                Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: metadata)
+                              ]);
+                        }
+                        return Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Expanded(child: content),
+                              const SizedBox(width: 20),
+                              metadata
+                            ]);
+                      }))))
+      ]));
 
   Widget _settings() => ListView(
-      key: const PageStorageKey('admin-settings-scroll'),
+          key: const PageStorageKey('admin-settings-scroll'),
           controller: adminScrollController,
           children: [
             _title('Configurações',
@@ -1722,8 +1932,9 @@ class _DoctorsViewState extends State<_DoctorsView> {
   Widget build(BuildContext context) {
     return ListView(children: [
       ResponsivePageHeader(
-          title: 'Médicos',
-          subtitle: 'Contas com acesso exclusivo à fila médica.',
+          title: 'Profissionais de atendimento',
+          subtitle:
+              'Médicos e dentistas com acesso exclusivo à própria fila de atendimento.',
           primaryAction: AppActionButton(
               label: 'Cadastrar Médico',
               icon: Icons.person_add_alt_1,
@@ -1781,7 +1992,7 @@ class _DoctorsViewState extends State<_DoctorsView> {
                     .titleMedium
                     ?.copyWith(fontWeight: FontWeight.w800)),
             Text(
-                '${doctor.maskedCpf} • ${specialtyDisplayName(doctor.specialty)}'),
+                '${doctor.profession} • ${doctor.maskedCpf} • ${specialtyDisplayName(doctor.specialty)}'),
             Text(doctor.active ? 'Ativo' : 'Inativo'),
           ]);
           final actions = Wrap(spacing: 8, runSpacing: 8, children: [
@@ -2090,7 +2301,7 @@ class _InternalUsersViewState extends State<_InternalUsersView> {
                             : Icons.support_agent)),
                 title: Text(user.name),
                 subtitle: Text(
-                    '${user.role == 'medico' ? 'Médico' : user.role == 'enfermagem' ? 'Enfermagem' : user.role == 'admin' ? 'Administrador' : 'Recepção'} • ${user.maskedCpf}\n${user.email}${user.specialty == null ? '' : ' • ${specialtyDisplayName(user.specialty!)}'}'),
+                    '${user.profession ?? (user.role == 'admin' ? 'Administrador' : 'Recepção')} • ${user.maskedCpf}\n${user.email}${user.specialty == null ? '' : ' • ${specialtyDisplayName(user.specialty!)}'}'),
                 isThreeLine: true);
             final actions = Row(mainAxisSize: MainAxisSize.min, children: [
               Icon(user.active ? Icons.check_circle : Icons.block,

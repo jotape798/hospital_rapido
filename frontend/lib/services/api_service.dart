@@ -8,10 +8,13 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  static const baseUrl = ApiConfig.baseUrl;
+  ApiService({http.Client? client}) : _client = client ?? http.Client();
+
+  static final baseUrl = ApiConfig.baseUrl;
   static const storage = FlutterSecureStorage();
   static String? _token;
   static Session? session;
+  final http.Client _client;
   Map<String, String> get _headers => {
         'Content-Type': 'application/json',
         if (_token != null) 'Authorization': 'Bearer $_token'
@@ -24,7 +27,35 @@ class ApiService {
     }
     _token = null;
     session = null;
-    return false;
+    if (kIsWeb) return false;
+    try {
+      final savedToken = await storage.read(key: 'ubs_token');
+      if (savedToken == null || savedToken.isEmpty) return false;
+      _token = savedToken;
+      final response = await http.get(Uri.parse('$baseUrl/auth/me'), headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $savedToken',
+      }).timeout(const Duration(seconds: 10));
+      if (response.statusCode != 200) {
+        await logout();
+        return false;
+      }
+      final user = jsonDecode(response.body) as Map<String, dynamic>;
+      final permissions = ((user['permissions'] ?? []) as List)
+          .map((value) => value.toString())
+          .toList();
+      session = Session(
+        savedToken,
+        user['name'] as String? ?? user['nome'] as String? ?? '',
+        user['role'] as String? ?? user['perfil'] as String? ?? '',
+        permissions,
+      );
+      return true;
+    } catch (_) {
+      _token = null;
+      session = null;
+      return false;
+    }
   }
 
   static Future<void> logout() async {
@@ -166,6 +197,14 @@ class ApiService {
         .map((x) => x.toString())
         .toList();
     session = Session(_token!, u['name'], u['role'], permissions);
+    if (!kIsWeb) {
+      try {
+        await storage.write(key: 'ubs_token', value: _token);
+      } catch (_) {
+        // Sessão continua válida em memória quando o cofre nativo não existe,
+        // como em testes de widget sem os plugins da plataforma.
+      }
+    }
     return session!;
   }
 
@@ -174,11 +213,12 @@ class ApiService {
     try {
       final uri = Uri.parse('$baseUrl$path');
       final r = await (switch (method) {
-        'GET' => http.get(uri, headers: _headers),
-        'PUT' => http.put(uri, headers: _headers, body: jsonEncode(body)),
-        'PATCH' => http.patch(uri, headers: _headers, body: jsonEncode(body)),
-        'DELETE' => http.delete(uri, headers: _headers),
-        _ => http.post(uri, headers: _headers, body: jsonEncode(body)),
+        'GET' => _client.get(uri, headers: _headers),
+        'PUT' => _client.put(uri, headers: _headers, body: jsonEncode(body)),
+        'PATCH' =>
+          _client.patch(uri, headers: _headers, body: jsonEncode(body)),
+        'DELETE' => _client.delete(uri, headers: _headers),
+        _ => _client.post(uri, headers: _headers, body: jsonEncode(body)),
       })
           .timeout(const Duration(seconds: 45));
       if (r.statusCode == 401 && path != '/auth/login') {
@@ -186,14 +226,16 @@ class ApiService {
         throw const ApiException('Sessão expirada. Entre novamente.',
             statusCode: 401);
       }
-      if (r.statusCode < 200 || r.statusCode >= 300) throw _error(r);
+      if (r.statusCode < 200 || r.statusCode >= 300) {
+        throw _error(r, path: path);
+      }
       return r;
     } on TimeoutException {
       throw const ApiException(
           'A UBS demorou para responder. Tente novamente.');
     } on http.ClientException {
       throw const ApiException(
-          'Não foi possível conectar à UBS. Verifique sua conexão.');
+          'Sem conexão com a UBS. Confira a rede e se o sistema está iniciado.');
     }
   }
 
@@ -439,11 +481,45 @@ class ApiService {
       jsonDecode((await _request('GET', '/admin/appointments/$id')).body)
           as Map<String, dynamic>;
 
-  Future<List<Map<String, dynamic>>> auditHistory() async =>
-      _list(await _request('GET', '/admin/audit'));
+  Future<List<Map<String, dynamic>>> auditHistory(
+      {String? patient,
+      String? professional,
+      DateTime? dateFrom,
+      DateTime? dateTo,
+      String? action,
+      int limit = 100}) async {
+    final query = <String, String>{
+      if (patient?.trim().isNotEmpty ?? false) 'patient': patient!.trim(),
+      if (professional?.trim().isNotEmpty ?? false)
+        'professional': professional!.trim(),
+      if (dateFrom != null) 'date_from': _day(dateFrom),
+      if (dateTo != null) 'date_to': _day(dateTo),
+      if (action?.trim().isNotEmpty ?? false) 'action': action!.trim(),
+      'limit': '$limit',
+    };
+    return _list(await _request(
+        'GET', '/admin/audit?${Uri(queryParameters: query).query}'));
+  }
 
-  Future<List<Map<String, dynamic>>> priorityValidations() async =>
-      _list(await _request('GET', '/admin/priority-validations'));
+  Future<List<Map<String, dynamic>>> priorityValidations(
+      {String? patient,
+      String? professional,
+      DateTime? dateFrom,
+      DateTime? dateTo,
+      String? status,
+      int limit = 100}) async {
+    final query = <String, String>{
+      if (patient?.trim().isNotEmpty ?? false) 'patient': patient!.trim(),
+      if (professional?.trim().isNotEmpty ?? false)
+        'professional': professional!.trim(),
+      if (dateFrom != null) 'date_from': _day(dateFrom),
+      if (dateTo != null) 'date_to': _day(dateTo),
+      if (status?.isNotEmpty ?? false) 'status': status!,
+      'limit': '$limit',
+    };
+    return _list(await _request('GET',
+        '/admin/priority-validations?${Uri(queryParameters: query).query}'));
+  }
 
   Future<List<Map<String, dynamic>>> grids() async =>
       _list(await _request('GET', '/admin/grids'));
@@ -481,7 +557,37 @@ class ApiService {
     throw _error(r);
   }
 
-  ApiException _error(http.Response r) {
+  ApiException _error(http.Response r, {String? path}) {
+    final parsed = _parsedError(r);
+    if (path == '/auth/register') {
+      if (r.statusCode == 422) {
+        return parsed ??
+            const ApiException('Confira os dados informados.', statusCode: 422);
+      }
+      if (r.statusCode == 409) {
+        return parsed ??
+            const ApiException('CPF ou e-mail já cadastrado.', statusCode: 409);
+      }
+      if (r.statusCode == 503) {
+        return parsed ??
+            const ApiException(
+              'Não foi possível enviar o e-mail de confirmação agora. Tente novamente.',
+              statusCode: 503,
+            );
+      }
+    }
+    if (r.statusCode >= 500) {
+      return ApiException(
+        'A UBS encontrou um erro interno. Tente novamente mais tarde.',
+        statusCode: r.statusCode,
+      );
+    }
+    return parsed ??
+        ApiException('Não foi possível concluir a solicitação.',
+            statusCode: r.statusCode);
+  }
+
+  ApiException? _parsedError(http.Response r) {
     try {
       final detail = jsonDecode(r.body)['detail'];
       if (detail is Map) {
@@ -496,7 +602,7 @@ class ApiService {
       }
       return ApiException(detail.toString(), statusCode: r.statusCode);
     } catch (_) {
-      return const ApiException('Não foi possível comunicar com a UBS.');
+      return null;
     }
   }
 }

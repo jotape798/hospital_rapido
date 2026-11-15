@@ -99,7 +99,7 @@ class _MedicalDashboardState extends State<MedicalDashboard> {
   @override
   Widget build(BuildContext context) => ResponsiveAppShell(
         wideNavigationMode: WideNavigationMode.contentOnly,
-        title: 'Painel Médico',
+        title: 'Painel de Atendimento',
         subtitle: ApiService.session?.name,
         primaryAction: Wrap(spacing: 8, runSpacing: 8, children: [
           IconButton.filledTonal(
@@ -140,7 +140,8 @@ class _MedicalDashboardState extends State<MedicalDashboard> {
                                           .headlineMedium
                                           ?.copyWith(
                                               fontWeight: FontWeight.w800)),
-                                  const Text('pacientes na fila médica'),
+                                  const Text(
+                                      'pacientes na fila de atendimento'),
                                 ]))
                           ])),
                           const SizedBox(height: AppSpacing.md),
@@ -174,7 +175,7 @@ class _MedicalQueueCard extends StatelessWidget {
       container: true,
       explicitChildNodes: true,
       label:
-          'Paciente ${item.patient}. Horário $time. Especialidade ${specialtyDisplayName(item.specialty)}. ${RiskClassification.resolve(item.risk).semanticLabel}. Prioridade ${item.priorityReason}. Status ${inCare ? 'Em atendimento' : 'Aguardando médico'}',
+          'Paciente ${item.patient}. Horário $time. Especialidade ${specialtyDisplayName(item.specialty)}. ${RiskClassification.resolve(item.risk).semanticLabel}. Prioridade ${item.priorityReason}. Status ${inCare ? 'Em atendimento' : 'Aguardando profissional'}',
       child: AppSurfaceCard(
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -203,7 +204,8 @@ class _MedicalQueueCard extends StatelessWidget {
           Chip(
               avatar: Icon(inCare ? Icons.play_circle : Icons.hourglass_top,
                   size: 18),
-              label: Text(inCare ? 'Em atendimento' : 'Aguardando Médico')),
+              label:
+                  Text(inCare ? 'Em atendimento' : 'Aguardando profissional')),
         ]),
         const SizedBox(height: AppSpacing.md),
         Align(

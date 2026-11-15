@@ -71,6 +71,7 @@ class InternalUser {
         maskedCpf = v['masked_cpf'] as String,
         email = v['email'] as String,
         role = v['role'] as String,
+        profession = v['profession'] as String?,
         active = v['active'] as bool,
         professionalRegistration = v['professional_registration'] as String?,
         specialtyId = v['specialty_id'] as int?,
@@ -78,6 +79,7 @@ class InternalUser {
         canTriage = v['can_triage'] as bool? ?? false;
   final int id;
   final String name, maskedCpf, email, role;
+  final String? profession;
   final bool active, canTriage;
   final String? professionalRegistration, specialty;
   final int? specialtyId;
@@ -89,9 +91,10 @@ class DoctorAccount {
         name = v['name'] as String,
         maskedCpf = v['masked_cpf'] as String,
         active = v['active'] as bool,
-        specialty = v['specialty'] as String? ?? 'Clínica Geral';
+        specialty = v['specialty'] as String? ?? 'Clínica Geral',
+        profession = v['profession'] as String? ?? 'Médico';
   final int id;
-  final String name, maskedCpf, specialty;
+  final String name, maskedCpf, specialty, profession;
   final bool active;
 }
 

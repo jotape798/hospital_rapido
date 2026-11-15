@@ -27,8 +27,8 @@ void main() {
     await tester.enterText(find.byType(TextFormField).first, '52998224725');
     expect(find.text('529.982.247-25'), findsOneWidget);
     await tester.enterText(find.byType(TextFormField).first, '11111111111');
-    await tester.ensureVisible(find.text('Entrar →'));
-    await tester.tap(find.text('Entrar →'));
+    await tester.ensureVisible(find.text('Entrar'));
+    await tester.tap(find.text('Entrar'));
     await tester.pump();
     expect(find.text('CPF inválido. Confira os 11 números.'), findsOneWidget);
     expect(tester.takeException(), isNull);

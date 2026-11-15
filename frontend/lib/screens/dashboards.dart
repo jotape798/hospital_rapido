@@ -15,6 +15,8 @@ class _PatientDashboardState extends State<PatientDashboard> {
   Timer? refreshTimer;
   bool loading = true, requesting = false;
   final Set<int> cancelling = {};
+  final Set<String> _knownPriorityDecisions = {};
+  bool _priorityDecisionsInitialized = false;
   String? error;
   int page = 0;
 
@@ -43,6 +45,7 @@ class _PatientDashboardState extends State<PatientDashboard> {
       final all = values[1] as List<Appointment>;
       if (mounted) {
         String? changedStatus;
+        String? priorityDecisionNotice;
         if (quiet) {
           final previous = {for (final item in items) item.id: item.status};
           for (final item in all) {
@@ -52,6 +55,23 @@ class _PatientDashboardState extends State<PatientDashboard> {
             }
           }
         }
+        final decisions = next.patient.priorityConditions.where((item) {
+          final status = item['status']?.toString();
+          return status == 'confirmada' || status == 'rejeitada';
+        }).toList();
+        if (quiet && _priorityDecisionsInitialized) {
+          for (final item in decisions) {
+            final key = _priorityDecisionKey(item);
+            if (!_knownPriorityDecisions.contains(key)) {
+              priorityDecisionNotice = _priorityDecisionText(item);
+              break;
+            }
+          }
+        }
+        _knownPriorityDecisions
+          ..clear()
+          ..addAll(decisions.map(_priorityDecisionKey));
+        _priorityDecisionsInitialized = true;
         setState(() {
           summary = next;
           items = all;
@@ -61,6 +81,9 @@ class _PatientDashboardState extends State<PatientDashboard> {
         if (changedStatus != null) {
           announceImportant(
               context, 'Status da consulta alterado para $changedStatus');
+        }
+        if (priorityDecisionNotice != null) {
+          notice(context, priorityDecisionNotice);
         }
       }
     } on ApiException catch (e) {
@@ -241,6 +264,67 @@ class _PatientDashboardState extends State<PatientDashboard> {
                           color: contrast ? Colors.white : color,
                           fontWeight: FontWeight.w700)))
             ])));
+  }
+
+  String _priorityConditionLabel(Map<String, dynamic> item) =>
+      switch (item['condition']) {
+        'pcd' => 'PCD',
+        'gestante' => 'Gestante',
+        'lactante' => 'Lactante',
+        _ => item['condition']?.toString() ?? 'Condição prioritária',
+      };
+
+  String _priorityDecisionKey(Map<String, dynamic> item) =>
+      '${item['condition']}|${item['status']}|${item['validated_at']}';
+
+  String _priorityDecisionEffect(String status) => status == 'confirmada'
+      ? 'A condição foi incluída no cálculo da prioridade dos próximos atendimentos.'
+      : 'A condição não altera sua prioridade de atendimento. Procure a Recepção se precisar de orientação.';
+
+  String _priorityDecisionText(Map<String, dynamic> item) {
+    final label = _priorityConditionLabel(item);
+    final confirmed = item['status'] == 'confirmada';
+    return '$label ${confirmed ? 'confirmada' : 'rejeitada'}. ${_priorityDecisionEffect(item['status'].toString())}';
+  }
+
+  Widget _priorityDecisionAlert(Map<String, dynamic> item) {
+    final status = item['status']?.toString() ?? '';
+    final label = _priorityConditionLabel(item);
+    final confirmed = status == 'confirmada';
+    final validatedAt = item['validated_at']?.toString();
+    final decisionDate = validatedAt == null
+        ? 'Data da decisão não informada'
+        : 'Decisão em ${showDate(DateTime.parse(validatedAt))}';
+    final effect = _priorityDecisionEffect(status);
+    return Semantics(
+        key: ValueKey('priority-decision-${item['condition']}-$status'),
+        container: true,
+        liveRegion: true,
+        label:
+            'Aviso de condição prioritária. $label. ${confirmed ? 'Confirmada' : 'Rejeitada'}. $decisionDate. $effect',
+        child: AppSurfaceCard(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Icon(confirmed ? Icons.verified_outlined : Icons.info_outline,
+              color: confirmed ? green : Colors.orange.shade800),
+          const SizedBox(width: 12),
+          Expanded(
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                Text('Aviso sobre $label',
+                    style: Theme.of(context)
+                        .textTheme
+                        .titleMedium
+                        ?.copyWith(fontWeight: FontWeight.w800)),
+                const SizedBox(height: 4),
+                Text(confirmed
+                    ? 'Resultado: confirmada'
+                    : 'Resultado: rejeitada'),
+                Text(decisionDate),
+                const SizedBox(height: 4),
+                Text(effect),
+              ]))
+        ])));
   }
 
   Widget consultationCard(Appointment item) => Semantics(
@@ -536,14 +620,16 @@ class _PatientDashboardState extends State<PatientDashboard> {
                     }),
                     if (p.priorityConditions.isNotEmpty) ...[
                       const SizedBox(height: 16),
+                      ...p.priorityConditions
+                          .where((item) =>
+                              item['status'] == 'confirmada' ||
+                              item['status'] == 'rejeitada')
+                          .map((item) => Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: _priorityDecisionAlert(item))),
                       ...p.priorityConditions.map((item) {
                         final status = item['status']?.toString() ?? 'pendente';
-                        final label = switch (item['condition']) {
-                          'pcd' => 'PCD',
-                          'gestante' => 'Gestante',
-                          'lactante' => 'Lactante',
-                          _ => item['condition'].toString(),
-                        };
+                        final label = _priorityConditionLabel(item);
                         final message = switch (status) {
                           'confirmada' => 'Confirmada presencialmente',
                           'rejeitada' => 'Rejeitada na validação presencial',
