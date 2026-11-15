@@ -1,0 +1,15 @@
+UBS Rápida 0.1.0 — Windows
+
+1. Extraia todo o ZIP para uma pasta gravável.
+2. Execute Iniciar_UBS_Rapida.bat.
+3. No primeiro uso, crie o administrador local solicitado no terminal.
+4. O aplicativo abrirá somente depois que a API local responder.
+
+Dados e configuração ficam em %LOCALAPPDATA%\UBSRapida e não são removidos
+automaticamente quando a pasta do aplicativo é apagada.
+
+Este pacote acadêmico usa uma base nova. Ele não contém a base, os segredos,
+as contas nem os logs do ambiente de desenvolvimento.
+
+Requisitos: Windows 10 versão 1809 ou mais recente, processador x64 e cerca de
+500 MB livres. O pacote não exige Flutter ou Python instalados.

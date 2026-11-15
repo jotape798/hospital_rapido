@@ -89,13 +89,13 @@ BEGIN
     BEGIN
         BLOCK "040904e4"
         BEGIN
-            VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "ubs_saude" "\0"
+            VALUE "CompanyName", "UBS Rápida" "\0"
+            VALUE "FileDescription", "UBS Rápida" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "ubs_saude" "\0"
-            VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
-            VALUE "OriginalFilename", "ubs_saude.exe" "\0"
-            VALUE "ProductName", "ubs_saude" "\0"
+            VALUE "InternalName", "UBS_Rapida" "\0"
+            VALUE "LegalCopyright", "Copyright (C) 2026 UBS Rápida. Licença MIT." "\0"
+            VALUE "OriginalFilename", "UBS_Rapida.exe" "\0"
+            VALUE "ProductName", "UBS Rápida" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

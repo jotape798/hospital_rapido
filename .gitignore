@@ -10,6 +10,9 @@
 *.key
 *.pfx
 *.p12
+*.jks
+*.keystore
+**/key.properties
 
 # Bancos locais e cópias de segurança
 *.db
@@ -67,6 +70,7 @@ Thumbs.db
 *.log
 output/
 tmp/
+dist/
 frontend/test-renders/
 docs/99_arquivo_historico/acervo_documentacao_projeto/referencias/anotacoes_estudo_banco_de_dados.txt
 *.zip
