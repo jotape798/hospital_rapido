@@ -6,6 +6,7 @@ from sqlalchemy import func, select
 
 from test_integration import client
 
+from app.core import clock
 from app.core.database import SessionLocal
 from app.core.security import pwd
 from app.models import Appointment, ProfessionalSchedule, User
@@ -24,7 +25,7 @@ def _prepare() -> None:
 
 
 def _intended_first_slot() -> datetime:
-    return datetime.combine(_next_weekday(date.today()), time(7))
+    return datetime.combine(_next_weekday(clock.today_sao_paulo()), time(7))
 
 
 def test_workflow_is_stable_across_three_runs(client):

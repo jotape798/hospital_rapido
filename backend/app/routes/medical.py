@@ -118,7 +118,19 @@ def _payload(
     }
 
 
-@router.get("/fila", response_model=list[MedicalCareResponse])
+@router.get(
+    "/fila",
+    response_model=list[MedicalCareResponse],
+    summary="Listar fila do profissional de atendimento",
+    description=(
+        "Perfil autorizado: Médico/Profissional de atendimento. Retorna somente "
+        "consultas atribuídas à conta autenticada, com check-in e triagem concluídos."
+    ),
+    responses={
+        401: {"description": "Token ausente ou inválido."},
+        403: {"description": "Perfil sem acesso à fila de atendimento."},
+    },
+)
 def medical_queue(
     actor: User = Depends(require_roles("medico")),
     db: Session = Depends(get_db),

@@ -2,6 +2,7 @@ from datetime import datetime
 
 from sqlalchemy import select
 
+from app.core import clock
 from app.core.database import SessionLocal
 from app.core.security import pwd
 from app.models import Appointment, ProfessionalProfile, RiskClassification, Specialty, User
@@ -83,11 +84,11 @@ def _setup_medical_flow() -> tuple[int, int]:
             paciente_id=patient.id,
             medico_id=doctor.id,
             especialidade="Clínica Geral",
-            data_horario=datetime.now().replace(hour=10, minute=0, second=0, microsecond=0),
+            data_horario=clock.now_sao_paulo_naive().replace(hour=10, minute=0, second=0, microsecond=0),
             status="em_triagem",
             classificacao_risco="alto",
-            chegada_em=datetime.now(),
-            triagem_em=datetime.now(),
+            chegada_em=clock.now_sao_paulo_naive(),
+            triagem_em=clock.now_sao_paulo_naive(),
             triagem_por=nurse.id,
         )
         db.add(appointment)
@@ -179,9 +180,9 @@ def test_medical_access_is_limited_to_assigned_triaged_patients(client):
             paciente_id=patient_id,
             medico_id=assigned_doctor.id,
             especialidade="Clínica Geral",
-            data_horario=datetime.now().replace(hour=11, minute=0, second=0, microsecond=0),
+            data_horario=clock.now_sao_paulo_naive().replace(hour=11, minute=0, second=0, microsecond=0),
             status="em_espera",
-            chegada_em=datetime.now(),
+            chegada_em=clock.now_sao_paulo_naive(),
         )
         db.add(untriaged)
         db.commit()
@@ -208,11 +209,11 @@ def test_patient_cannot_be_in_two_simultaneous_medical_visits(client):
             paciente_id=patient_id,
             medico_id=doctor.id,
             especialidade="Clínica Geral",
-            data_horario=datetime.now().replace(hour=11, minute=0, second=0, microsecond=0),
+            data_horario=clock.now_sao_paulo_naive().replace(hour=11, minute=0, second=0, microsecond=0),
             status="em_triagem",
             classificacao_risco="moderado",
-            chegada_em=datetime.now(),
-            triagem_em=datetime.now(),
+            chegada_em=clock.now_sao_paulo_naive(),
+            triagem_em=clock.now_sao_paulo_naive(),
             triagem_por=nurse.id,
         )
         db.add(second)
@@ -327,7 +328,7 @@ def test_legacy_professional_migration_preserves_ids_and_links(client):
             paciente_id=patient.id,
             medico_id=legacy.id,
             especialidade="Clínica Geral",
-            data_horario=datetime.now(),
+            data_horario=clock.now_sao_paulo_naive(),
             status="agendado",
         )
         db.add(appointment)

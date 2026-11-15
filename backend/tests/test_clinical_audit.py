@@ -10,6 +10,7 @@ from test_integration import SessionLocal, _admin_headers, client, header, regis
 from test_booking_flow import _booking_context, _payload
 from test_staff_profiles import _login, _setup_staff_data
 
+from app.core import clock
 from app.core.security import make_token
 from app.models import Appointment, AppointmentStatusHistory, AuditLog, User
 from app.services import appointments as appointment_service
@@ -284,7 +285,7 @@ def test_manual_absence_duplicate_preserves_original_timestamp(client):
 
 
 def test_manual_absence_after_checkin_is_rejected_by_both_routes(client):
-    appointment_id, headers = _absence_context(datetime.now())
+    appointment_id, headers = _absence_context(clock.now_sao_paulo_naive())
     checkin = client.patch(
         f"/recepcao/agendamentos/{appointment_id}/check-in",
         headers=headers["recepcao"],
@@ -325,7 +326,9 @@ def test_manual_absence_rejects_another_day(client, monkeypatch):
 
 @pytest.mark.parametrize("role", ["paciente", "enfermagem", "medico"])
 def test_manual_absence_requires_reception_or_admin(client, role):
-    appointment_id, headers = _absence_context(datetime.now() - timedelta(hours=1))
+    appointment_id, headers = _absence_context(
+        clock.now_sao_paulo_naive() - timedelta(hours=1)
+    )
     response = client.patch(
         f"/recepcao/agendamentos/{appointment_id}/nao-compareceu",
         headers=headers[role],

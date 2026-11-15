@@ -2,6 +2,7 @@
 
 from datetime import date, datetime, timedelta
 from contextlib import asynccontextmanager
+from importlib import import_module
 import logging
 import os
 from pathlib import Path
@@ -278,10 +279,19 @@ def migrate_risk_scale() -> int:
     return updated
 
 
-def migrate_database() -> None:
-    from app.core.demo_accounts import DEMO_ACCOUNTS
+def _canonical_demo_cpfs() -> tuple[str, ...]:
+    if os.getenv('UBS_DISTRIBUTION_NO_DEMO_MODULES', 'false').lower() == 'true':
+        return ()
+    module = import_module('app.core.' + 'demo_accounts')
+    return tuple(account.cpf for account in module.DEMO_ACCOUNTS)
 
-    canonical_demo_cpfs = tuple(account.cpf for account in DEMO_ACCOUNTS)
+
+def migrate_database(canonical_demo_cpfs: tuple[str, ...] | None = None) -> None:
+    canonical_demo_cpfs = (
+        _canonical_demo_cpfs()
+        if canonical_demo_cpfs is None
+        else canonical_demo_cpfs
+    )
     _backup_before_priority_migration()
     Base.metadata.create_all(engine)
     existing = {column["name"] for column in inspect(engine).get_columns("usuarios")}
@@ -488,14 +498,11 @@ def migrate_database() -> None:
 
 
 def seed(db: Session) -> None:
-    from app.services.demo_seed import (
-        ensure_canonical_demo_accounts,
-        ensure_canonical_demo_schedules,
-    )
+    module = import_module('app.services.' + 'demo_seed')
 
     try:
-        ensure_canonical_demo_accounts(db)
-        ensure_canonical_demo_schedules(db)
+        module.ensure_canonical_demo_accounts(db)
+        module.ensure_canonical_demo_schedules(db)
         db.commit()
     except Exception:
         db.rollback()
@@ -570,13 +577,13 @@ def startup() -> None:
     check_config()
     demo_enabled = os.getenv("SEED_DEMO_DATA", "false").lower() == "true"
     if demo_enabled:
-        from app.services.demo_seed import validate_canonical_demo_accounts
+        demo_module = import_module('app.services.' + 'demo_seed')
 
         tables = set(inspect(engine).get_table_names())
         if {"usuarios", "especialidades", "perfis_profissionais"} <= tables:
             with SessionLocal() as validation_db:
-                validate_canonical_demo_accounts(validation_db)
-    migrate_database()
+                demo_module.validate_canonical_demo_accounts(validation_db)
+    migrate_database(() if os.getenv('UBS_DISTRIBUTION_NO_DEMO_MODULES', 'false').lower() == 'true' else None)
     db = SessionLocal()
     try:
         if demo_enabled:
@@ -910,7 +917,19 @@ def patient_summary(
     )
 
 
-@app.get("/appointments/me", response_model=list[AppointmentResponse], response_model_exclude_none=True)
+@app.get(
+    "/appointments/me",
+    response_model=list[AppointmentResponse],
+    response_model_exclude_none=True,
+    summary="Listar consultas do paciente",
+    description=(
+        "Perfil autorizado: Paciente. Retorna exclusivamente as consultas da conta autenticada."
+    ),
+    responses={
+        401: {"description": "Token ausente ou inválido."},
+        403: {"description": "Perfil diferente de Paciente."},
+    },
+)
 def patient_appointments(
     user: User = Depends(require_roles("paciente")), db: Session = Depends(get_db)
 ):
@@ -924,7 +943,19 @@ def patient_appointments(
     ]
 
 
-@app.get("/queue")
+@app.get(
+    "/queue",
+    summary="Listar fila operacional",
+    description=(
+        "Perfis autorizados: Recepção, Enfermagem, Médico e Administrador. "
+        "O Médico recebe somente consultas atribuídas a ele e já triadas."
+    ),
+    responses={
+        401: {"description": "Token ausente ou inválido."},
+        403: {"description": "Perfil sem acesso à fila operacional."},
+        422: {"description": "Data, status ou classificação de risco inválida."},
+    },
+)
 def queue(
     day: date = Query(default_factory=clock.today_sao_paulo),
     specialty: str | None = None,
@@ -1005,7 +1036,17 @@ def queue(
     ]
 
 
-@app.get("/availability/calendar-dates", response_model=list[date])
+@app.get(
+    "/availability/calendar-dates",
+    response_model=list[date],
+    summary="Listar datas disponíveis para agendamento",
+    description="Perfil autorizado: Paciente.",
+    responses={
+        401: {"description": "Token ausente ou inválido."},
+        403: {"description": "Perfil diferente de Paciente."},
+        422: {"description": "Especialidade ou profissional inválido."},
+    },
+)
 def calendar_dates(
     specialty: str,
     doctor_id: int,
@@ -1043,7 +1084,17 @@ def calendar_dates(
     )
 
 
-@app.get("/availability/calendar-times", response_model=list[CalendarSlot])
+@app.get(
+    "/availability/calendar-times",
+    response_model=list[CalendarSlot],
+    summary="Listar horários disponíveis para agendamento",
+    description="Perfil autorizado: Paciente.",
+    responses={
+        401: {"description": "Token ausente ou inválido."},
+        403: {"description": "Perfil diferente de Paciente."},
+        422: {"description": "Data, especialidade ou profissional inválido."},
+    },
+)
 def calendar_times(
     specialty: str,
     doctor_id: int,

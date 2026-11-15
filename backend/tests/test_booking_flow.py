@@ -171,7 +171,7 @@ def test_past_date_is_rejected(client):
     assert register(client).status_code == 201
     patient_headers = header(client)
     context = _booking_context(slots=1)
-    past = datetime.now().replace(
+    past = clock.now_sao_paulo_naive().replace(
         hour=9, minute=0, second=0, microsecond=0
     ) - timedelta(days=1)
     response = client.post(

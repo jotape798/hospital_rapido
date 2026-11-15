@@ -84,7 +84,7 @@ def header(client):
 
 
 def future_weekday(hour=9, days=3):
-    value = (datetime.now() + timedelta(days=days)).replace(
+    value = (clock.now_sao_paulo_naive() + timedelta(days=days)).replace(
         hour=hour, minute=0, second=0, microsecond=0
     )
     while value.weekday() >= 5:
@@ -757,7 +757,8 @@ def test_minor_appointment_requires_valid_guardian_link_even_with_legacy_flag(cl
     headers = header(client)
     with SessionLocal() as db:
         patient = db.scalar(select(User).where(User.perfil == "paciente"))
-        patient.data_nascimento = datetime.now().replace(year=datetime.now().year - 10)
+        now = clock.now_sao_paulo_naive()
+        patient.data_nascimento = now.replace(year=now.year - 10)
         patient.e_menor_idade = False
         doctor = User(
             nome="Médico Fictício",
@@ -794,7 +795,7 @@ def test_exact_time_boundaries(client, monkeypatch):
     from app.core import clock
     register(client)
     h = header(client)
-    anchor = (datetime.now() + timedelta(days=1)).replace(
+    anchor = (clock.now_sao_paulo_naive() + timedelta(days=1)).replace(
         hour=1, minute=0, second=0, microsecond=0
     )
     while anchor.weekday() != 0:
@@ -1130,9 +1131,9 @@ def test_checkin_duplicate_cancelled_and_grid_overlap(client):
             especialidade_id=specialty.id, autorizado_triagem=False))
         patient = db.scalar(select(User).where(User.perfil == "paciente"))
         appointment = Appointment(paciente_id=patient.id, medico_id=professional.id,
-            especialidade=specialty.nome, data_horario=datetime.now(), status="agendado")
+            especialidade=specialty.nome, data_horario=clock.now_sao_paulo_naive(), status="agendado")
         cancelled = Appointment(paciente_id=patient.id, medico_id=professional.id,
-            especialidade=specialty.nome, data_horario=datetime.now() + timedelta(minutes=30), status="cancelado")
+            especialidade=specialty.nome, data_horario=clock.now_sao_paulo_naive() + timedelta(minutes=30), status="cancelado")
         db.add_all([appointment, cancelled]); db.commit()
         appointment_id, cancelled_id, professional_id, specialty_id = appointment.id, cancelled.id, professional.id, specialty.id
     assert client.patch(f"/recepcao/agendamentos/{appointment_id}/check-in", headers=headers).status_code == 200
@@ -1140,13 +1141,13 @@ def test_checkin_duplicate_cancelled_and_grid_overlap(client):
     assert client.patch(f"/recepcao/agendamentos/{appointment_id}/check-in", headers=headers).status_code == 409
     assert client.patch(f"/recepcao/agendamentos/{cancelled_id}/check-in", headers=headers).status_code == 409
     searched = client.get("/admin/appointments", headers=headers, params={
-        "day": datetime.now().date().isoformat(),
-        "patient": datetime.now().strftime("%H:%M"),
+        "day": clock.today_sao_paulo().isoformat(),
+        "patient": clock.now_sao_paulo_naive().strftime("%H:%M"),
     })
     assert searched.status_code == 200
     assert any(item["id"] == appointment_id for item in searched.json())
     from app.routes.admin import is_holiday
-    selected_day = (datetime.now() + timedelta(days=1)).date()
+    selected_day = (clock.now_sao_paulo_naive() + timedelta(days=1)).date()
     while selected_day.weekday() >= 5 or is_holiday(selected_day):
         selected_day += timedelta(days=1)
     day = selected_day.isoformat()
@@ -1195,7 +1196,7 @@ def test_admin_manages_nursing_schedule_and_rejects_non_professional_blocks(clie
     assert nurse_id in {item["id"] for item in professionals.json()}
 
     from app.routes.admin import is_holiday
-    selected_day = (datetime.now() + timedelta(days=1)).date()
+    selected_day = (clock.now_sao_paulo_naive() + timedelta(days=1)).date()
     while selected_day.weekday() >= 5 or is_holiday(selected_day):
         selected_day += timedelta(days=1)
     grid = {
@@ -1287,7 +1288,7 @@ def test_absence_details_specialties_and_schedule_rules(client, monkeypatch):
     listed = client.get("/admin/specialties", headers=headers).json()
     assert [item["name"] for item in listed] == ["Clínica Geral", "Dermatologia Fictícia"]
 
-    next_day = (datetime.now() + timedelta(days=1)).date()
+    next_day = (clock.now_sao_paulo_naive() + timedelta(days=1)).date()
     while next_day.weekday() >= 5:
         next_day += timedelta(days=1)
     invalid_grid = {"professional_id": professional_id, "specialty_id": specialty_id,

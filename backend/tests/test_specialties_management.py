@@ -15,6 +15,7 @@ os.environ["JWT_SECRET_KEY"] = secrets.token_urlsafe(48)
 os.environ["SEED_DEMO_DATA"] = "false"
 
 from app.core.database import Base, SessionLocal, engine
+from app.core import clock
 from app.core.security import make_token, pwd
 from app.main import app
 from app.models import Appointment, ProfessionalProfile, ProfessionalSchedule, Specialty, User
@@ -96,7 +97,7 @@ def test_admin_edits_specialty_and_keeps_schedules_and_appointments_linked(clien
             registro_profissional="CRM-TESTE-20",
             especialidade_id=specialty.id,
         )
-        scheduled_at = datetime.now() + timedelta(days=3)
+        scheduled_at = clock.now_sao_paulo_naive() + timedelta(days=3)
         schedule = ProfessionalSchedule(
             medico_id=doctor.id,
             data_horario=scheduled_at,

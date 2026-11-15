@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select
 
 from test_integration import client, register, login
+from app.core import clock
 from app.core.database import SessionLocal
 from app.core.security import pwd
 from app.models import (
@@ -37,7 +38,7 @@ def _email_recovery(client, monkeypatch):
         recovery = db.scalar(select(PasswordRecovery))
         assert recovery.codigo_hash != sent[0][1]
         assert len(recovery.codigo_hash) == 64
-        assert recovery.expira_em <= datetime.utcnow() + timedelta(minutes=10)
+        assert recovery.expira_em <= clock.now_utc_naive() + timedelta(minutes=10)
     return sent[0][1]
 
 
@@ -80,7 +81,7 @@ def test_email_recovery_invalid_expired_weak_and_confirmation(client, monkeypatc
     ).status_code == 400
     with SessionLocal() as db:
         row = db.scalar(select(PasswordRecovery))
-        row.expira_em = datetime.utcnow() - timedelta(seconds=1)
+        row.expira_em = clock.now_utc_naive() - timedelta(seconds=1)
         db.commit()
     assert client.post(
         "/auth/validar-codigo-recuperacao",
@@ -89,7 +90,7 @@ def test_email_recovery_invalid_expired_weak_and_confirmation(client, monkeypatc
 
     with SessionLocal() as db:
         row = db.scalar(select(PasswordRecovery))
-        row.expira_em = datetime.utcnow() + timedelta(minutes=10)
+        row.expira_em = clock.now_utc_naive() + timedelta(minutes=10)
         row.tentativas = 0
         db.commit()
     token = client.post(
@@ -119,6 +120,42 @@ def test_unknown_email_has_same_response_and_no_recovery(client, monkeypatch):
     assert known.json() == unknown.json()
 
 
+def test_unverified_email_is_blocked_without_creating_recovery(client, monkeypatch):
+    import app.routes.recovery as recovery_routes
+
+    sent = []
+    monkeypatch.setattr(
+        recovery_routes,
+        "send_recovery",
+        lambda email, code: sent.append((email, code)),
+    )
+    response = client.post(
+        "/auth/register",
+        json={
+            "name": "Paciente Não Confirmada",
+            "cpf": "16899535009",
+            "cns": "123456789012346",
+            "birth_date": "1992-04-10",
+            "email": "nao-confirmada@example.com",
+            "phone": "11988887777",
+            "password": "Paciente@123",
+            "password_confirmation": "Paciente@123",
+        },
+    )
+    assert response.status_code == 201
+
+    blocked = client.post(
+        "/auth/esqueci-senha", json={"email": "nao-confirmada@example.com"}
+    )
+    assert blocked.status_code == 403
+    assert blocked.json() == {
+        "detail": "Confirme seu e-mail antes de solicitar a recuperação de senha."
+    }
+    assert sent == []
+    with SessionLocal() as db:
+        assert db.scalar(select(func.count(PasswordRecovery.id))) == 0
+
+
 def test_email_recovery_resend_wait_and_release(client, monkeypatch):
     import app.routes.recovery as recovery_routes
 
@@ -142,7 +179,7 @@ def test_email_recovery_resend_wait_and_release(client, monkeypatch):
     with SessionLocal() as db:
         assert db.scalar(select(func.count(PasswordRecovery.id))) == 1
         row = db.scalar(select(PasswordRecovery))
-        row.criado_em = datetime.utcnow() - timedelta(seconds=61)
+        row.criado_em = clock.now_utc_naive() - timedelta(seconds=61)
         db.commit()
 
     released = client.post(
@@ -197,7 +234,7 @@ def test_email_recovery_attempt_limit_and_reset_requires_token(client, monkeypat
 
 
 def _next_weekday():
-    day = (datetime.now() + timedelta(days=2)).replace(
+    day = (clock.now_sao_paulo_naive() + timedelta(days=2)).replace(
         hour=7, minute=0, second=0, microsecond=0
     )
     while day.weekday() >= 5:
@@ -270,7 +307,7 @@ def test_calendar_states_and_invalid_periods(client):
         f"/availability/calendar-times?specialty=Cl%C3%ADnica%20Geral&doctor_id={doctor_id}&day={weekend.date().isoformat()}",
         headers=headers,
     ).json() == []
-    past = (datetime.now() - timedelta(days=1)).date().isoformat()
+    past = (clock.now_sao_paulo_naive() - timedelta(days=1)).date().isoformat()
     assert client.get(
         f"/availability/calendar-times?specialty=Cl%C3%ADnica%20Geral&doctor_id={doctor_id}&day={past}",
         headers=headers,

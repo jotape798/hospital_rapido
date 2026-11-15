@@ -5,9 +5,9 @@ from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, EmailStr, Field
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.core.database import get_db
 from app.core import clock
@@ -50,6 +50,19 @@ def mask_cpf(cpf: str) -> str:
     return f"***.***.***-{cpf[-2:]}" if len(cpf or "") == 11 else "***"
 
 
+def professional_label(user: User, profile: ProfessionalProfile | None) -> str:
+    role = canonical_role(user.perfil)
+    if role == "recepcao":
+        return "Recepção"
+    if role == "enfermagem":
+        return "Enfermagem"
+    if role == "medico" and profile:
+        registration = profile.registro_profissional.upper()
+        if registration.startswith("CRO-") or specialty_key(profile.especialidade.nome) == specialty_key("Odontologia"):
+            return "Dentista"
+    return "Médico" if role == "medico" else role.title()
+
+
 def doctor_response(db: Session, user: User) -> DoctorResponse:
     profile = db.scalar(
         select(ProfessionalProfile).where(ProfessionalProfile.usuario_id == user.id)
@@ -61,6 +74,7 @@ def doctor_response(db: Session, user: User) -> DoctorResponse:
         active=user.ativo,
         specialty=(canonical_specialty_name(profile.especialidade.nome)
                    if profile else GENERAL_SPECIALTY),
+        profession=professional_label(user, profile),
     )
 
 
@@ -88,6 +102,7 @@ def internal_response(db: Session, user: User) -> InternalUserResponse:
     return InternalUserResponse(
         id=user.id, name=user.nome, masked_cpf=mask_cpf(user.cpf), email=user.email,
         role=canonical_role(user.perfil), active=user.ativo, created_at=user.criado_em,
+        profession=professional_label(user, profile),
         updated_at=user.atualizado_em,
         professional_registration=(profile.registro_profissional if profile and
                                    not profile.registro_profissional.startswith("SEM-REGISTRO-") else None),
@@ -441,7 +456,19 @@ def schedule_professionals(
     return [{"id": row.id, "name": row.nome} for row in rows]
 
 
-@router.get("/appointments")
+@router.get(
+    "/appointments",
+    summary="Listar agenda administrativa",
+    description=(
+        "Perfis autorizados: Administrador, Recepção e Profissional de atendimento. "
+        "O profissional visualiza somente consultas atribuídas a ele."
+    ),
+    responses={
+        401: {"description": "Token ausente ou inválido."},
+        403: {"description": "Perfil sem acesso ou consulta de outro profissional."},
+        422: {"description": "Data, status ou classificação de risco inválida."},
+    },
+)
 def agenda(day: date = Query(default_factory=clock.today_sao_paulo), specialty: str | None = None,
            professional_id: int | None = None, status: str | None = None,
            risk: str | None = None, patient: str | None = None,
@@ -514,49 +541,253 @@ def appointment_details(appointment_id: int,
             "risk_classification": row.classificacao_risco, "arrived_at": row.chegada_em}
 
 
-@router.get("/audit")
-def audit_history(limit: int = Query(100, ge=1, le=500), actor: User = Depends(require_roles("admin")),
-                  db: Session = Depends(get_db)):
-    rows = db.scalars(select(AuditLog).order_by(AuditLog.criado_em.desc()).limit(limit))
-    result = []
-    for row in rows:
-        who = db.get(User, row.usuario_id)
-        result.append({"id": row.id, "actor": who.nome if who else "Usuário removido", "action": row.acao,
-                       "record_type": row.tipo_registro, "record_id": row.registro_id,
-                       "details": json.loads(row.detalhes) if row.detalhes else None,
-                       "created_at": clock.utc_naive_to_sao_paulo_naive(row.criado_em)})
-    return result
+def _history_date_bounds(
+    date_from: date | None,
+    date_to: date | None,
+) -> tuple[datetime | None, datetime | None, datetime | None, datetime | None]:
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(422, "A data inicial não pode ser posterior à data final")
+    local_start = datetime.combine(date_from, time.min) if date_from else None
+    local_end = (
+        datetime.combine(date_to + timedelta(days=1), time.min) if date_to else None
+    )
+    utc_start = (
+        local_start.replace(tzinfo=clock.SAO_PAULO)
+        .astimezone(clock.UTC)
+        .replace(tzinfo=None)
+        if local_start
+        else None
+    )
+    utc_end = (
+        local_end.replace(tzinfo=clock.SAO_PAULO)
+        .astimezone(clock.UTC)
+        .replace(tzinfo=None)
+        if local_end
+        else None
+    )
+    return local_start, local_end, utc_start, utc_end
 
 
-@router.get("/priority-validations")
-def priority_validations(
+@router.get(
+    "/audit",
+    summary="Consultar auditoria administrativa",
+    description=(
+        "Perfil autorizado: Administrador. Permite combinar paciente, profissional, "
+        "intervalo de datas e tipo de ação, com paginação limitada."
+    ),
+    responses={
+        401: {"description": "Token ausente ou inválido."},
+        403: {"description": "Acesso exclusivo do Administrador."},
+        422: {"description": "Filtro ou intervalo de datas inválido."},
+    },
+)
+def audit_history(
+    patient: str | None = Query(None, max_length=120),
+    professional: str | None = Query(None, max_length=120),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    action: str | None = Query(None, max_length=80),
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=200),
     actor: User = Depends(require_roles("admin")),
     db: Session = Depends(get_db),
 ):
-    rows = list(db.scalars(
-        select(PriorityCondition).order_by(PriorityCondition.informada_em.desc())
-    ).unique())
-    result = []
-    for item in rows:
-        history = list(db.scalars(select(PriorityConditionHistory).where(
-            PriorityConditionHistory.condicao_prioritaria_id == item.id
-        ).order_by(PriorityConditionHistory.criado_em)))
-        result.append({
+    del actor
+    _local_start, _local_end, utc_start, utc_end = _history_date_bounds(
+        date_from, date_to
+    )
+    audit_actor = aliased(User)
+    appointment = aliased(Appointment)
+    appointment_patient = aliased(User)
+    appointment_professional = aliased(User)
+    condition = aliased(PriorityCondition)
+    condition_patient = aliased(User)
+    target_user = aliased(User)
+    query = (
+        select(
+            AuditLog,
+            audit_actor,
+            appointment_patient,
+            appointment_professional,
+            condition_patient,
+        )
+        .join(audit_actor, audit_actor.id == AuditLog.usuario_id)
+        .outerjoin(
+            appointment,
+            and_(
+                AuditLog.tipo_registro == "consulta",
+                appointment.id == AuditLog.registro_id,
+            ),
+        )
+        .outerjoin(appointment_patient, appointment_patient.id == appointment.paciente_id)
+        .outerjoin(
+            appointment_professional,
+            appointment_professional.id == appointment.medico_id,
+        )
+        .outerjoin(
+            condition,
+            and_(
+                AuditLog.tipo_registro == "condicao_prioritaria",
+                condition.id == AuditLog.registro_id,
+            ),
+        )
+        .outerjoin(condition_patient, condition_patient.id == condition.paciente_id)
+        .outerjoin(
+            target_user,
+            and_(
+                AuditLog.tipo_registro == "usuario",
+                target_user.id == AuditLog.registro_id,
+            ),
+        )
+    )
+    patient_term = patient.strip().lower() if patient else None
+    if patient_term:
+        pattern = f"%{patient_term}%"
+        query = query.where(or_(
+            func.lower(appointment_patient.nome).like(pattern),
+            func.lower(condition_patient.nome).like(pattern),
+            and_(
+                target_user.perfil == "paciente",
+                func.lower(target_user.nome).like(pattern),
+            ),
+        ))
+    professional_term = professional.strip().lower() if professional else None
+    if professional_term:
+        pattern = f"%{professional_term}%"
+        query = query.where(or_(
+            func.lower(audit_actor.nome).like(pattern),
+            func.lower(appointment_professional.nome).like(pattern),
+        ))
+    if action and action.strip():
+        query = query.where(AuditLog.acao == action.strip())
+    if utc_start:
+        query = query.where(AuditLog.criado_em >= utc_start)
+    if utc_end:
+        query = query.where(AuditLog.criado_em < utc_end)
+    rows = db.execute(
+        query.order_by(AuditLog.criado_em.desc(), AuditLog.id.desc())
+        .offset(offset)
+        .limit(limit)
+    ).all()
+    return [{
+        "id": row.id,
+        "actor": who.nome if who else "Usuário removido",
+        "action": row.acao,
+        "record_type": row.tipo_registro,
+        "record_id": row.registro_id,
+        "patient": (appointment_patient_row or condition_patient_row).nome
+        if (appointment_patient_row or condition_patient_row)
+        else None,
+        "professional": appointment_professional_row.nome
+        if appointment_professional_row
+        else None,
+        "details": json.loads(row.detalhes) if row.detalhes else None,
+        "created_at": clock.utc_naive_to_sao_paulo_naive(row.criado_em),
+    } for (
+        row,
+        who,
+        appointment_patient_row,
+        appointment_professional_row,
+        condition_patient_row,
+    ) in rows]
+
+
+@router.get(
+    "/priority-validations",
+    summary="Consultar histórico de condições prioritárias",
+    description=(
+        "Perfil autorizado: Administrador. Permite combinar paciente, responsável "
+        "pela validação, intervalo de datas e status."
+    ),
+    responses={
+        401: {"description": "Token ausente ou inválido."},
+        403: {"description": "Acesso exclusivo do Administrador."},
+        422: {"description": "Filtro ou intervalo de datas inválido."},
+    },
+)
+def priority_validations(
+    patient: str | None = Query(None, max_length=120),
+    professional: str | None = Query(None, max_length=120),
+    date_from: date | None = None,
+    date_to: date | None = None,
+    status: Literal["pendente", "confirmada", "rejeitada", "retirada"] | None = None,
+    offset: int = Query(0, ge=0),
+    limit: int = Query(100, ge=1, le=200),
+    actor: User = Depends(require_roles("admin")),
+    db: Session = Depends(get_db),
+):
+    del actor
+    local_start, local_end, utc_start, utc_end = _history_date_bounds(
+        date_from, date_to
+    )
+    patient_user = aliased(User)
+    validator = aliased(User)
+    query = (
+        select(PriorityCondition, patient_user, validator)
+        .join(patient_user, patient_user.id == PriorityCondition.paciente_id)
+        .outerjoin(validator, validator.id == PriorityCondition.validada_por)
+    )
+    if patient and patient.strip():
+        query = query.where(
+            func.lower(patient_user.nome).like(f"%{patient.strip().lower()}%")
+        )
+    if professional and professional.strip():
+        query = query.where(
+            func.lower(validator.nome).like(f"%{professional.strip().lower()}%")
+        )
+    if status:
+        query = query.where(PriorityCondition.status == status)
+    if local_start and utc_start:
+        query = query.where(or_(
+            PriorityCondition.validada_em >= local_start,
+            and_(
+                PriorityCondition.validada_em.is_(None),
+                PriorityCondition.informada_em >= utc_start,
+            ),
+        ))
+    if local_end and utc_end:
+        query = query.where(or_(
+            PriorityCondition.validada_em < local_end,
+            and_(
+                PriorityCondition.validada_em.is_(None),
+                PriorityCondition.informada_em < utc_end,
+            ),
+        ))
+    rows = db.execute(
+        query.order_by(PriorityCondition.informada_em.desc(), PriorityCondition.id.desc())
+        .offset(offset)
+        .limit(limit)
+    ).all()
+    ids = [item.id for item, _patient, _validator in rows]
+    history_by_condition: dict[int, list[dict]] = {item_id: [] for item_id in ids}
+    if ids:
+        history_actor = aliased(User)
+        history_rows = db.execute(
+            select(PriorityConditionHistory, history_actor)
+            .outerjoin(history_actor, history_actor.id == PriorityConditionHistory.alterado_por)
+            .where(PriorityConditionHistory.condicao_prioritaria_id.in_(ids))
+            .order_by(PriorityConditionHistory.criado_em)
+        ).all()
+        for event, event_actor in history_rows:
+            history_by_condition[event.condicao_prioritaria_id].append({
+                "previous_status": event.status_anterior,
+                "new_status": event.status_novo,
+                "actor": event_actor.nome if event_actor else "Usuário removido",
+                "created_at": event.criado_em,
+            })
+    return [
+        {
             "id": item.id,
-            "patient": item.paciente.nome,
+            "patient": patient_row.nome,
             "condition": item.condicao,
             "status": item.status,
             "reported_at": item.informada_em,
-            "validated_by": item.responsavel_validacao.nome if item.responsavel_validacao else None,
+            "validated_by": validator_row.nome if validator_row else None,
             "validated_at": item.validada_em,
-            "history": [{
-                "previous_status": event.status_anterior,
-                "new_status": event.status_novo,
-                "actor": (db.get(User, event.alterado_por).nome if db.get(User, event.alterado_por) else "Usuário removido"),
-                "created_at": event.criado_em,
-            } for event in history],
-        })
-    return result
+            "history": history_by_condition[item.id],
+        }
+        for item, patient_row, validator_row in rows
+    ]
 
 
 class SpecialtyInput(BaseModel):

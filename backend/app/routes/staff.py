@@ -248,7 +248,16 @@ def reception_summary(
     }
 
 
-@router.get("/recepcao/agendamentos")
+@router.get(
+    "/recepcao/agendamentos",
+    summary="Listar agenda da Recepção",
+    description="Perfil autorizado: Recepção.",
+    responses={
+        401: {"description": "Token ausente ou inválido."},
+        403: {"description": "Perfil diferente de Recepção."},
+        422: {"description": "Data ou filtro inválido."},
+    },
+)
 def reception_appointments(
     day: date = Query(default_factory=clock.today_sao_paulo),
     specialty: str | None = None,
@@ -267,7 +276,16 @@ def reception_appointments(
     return [_appointment_payload(db, row, risks.get(row.id)) for row in rows]
 
 
-@router.get("/recepcao/agendamentos/{appointment_id}")
+@router.get(
+    "/recepcao/agendamentos/{appointment_id}",
+    summary="Consultar agendamento na Recepção",
+    description="Perfil autorizado: Recepção.",
+    responses={
+        401: {"description": "Token ausente ou inválido."},
+        403: {"description": "Perfil diferente de Recepção."},
+        404: {"description": "Consulta inexistente."},
+    },
+)
 def reception_details(
     appointment_id: int,
     actor: User = Depends(require_roles("recepcao")),
@@ -326,7 +344,19 @@ def reception_absence(
 
 
 @router.patch(
-    "/recepcao/agendamentos/{appointment_id}/condicoes/{condition_name}/validacao"
+    "/recepcao/agendamentos/{appointment_id}/condicoes/{condition_name}/validacao",
+    summary="Validar condição prioritária presencialmente",
+    description=(
+        "Perfil autorizado: Recepção. Confirma ou rejeita PCD, gestante ou lactante "
+        "após o check-in, preservando responsável, data e transição."
+    ),
+    responses={
+        401: {"description": "Token ausente ou inválido."},
+        403: {"description": "Perfil diferente de Recepção."},
+        404: {"description": "Consulta ou condição prioritária inexistente."},
+        409: {"description": "Consulta ou condição em estado incompatível."},
+        422: {"description": "Condição ou resultado inválido."},
+    },
 )
 def validate_priority_condition(
     appointment_id: int,
@@ -443,7 +473,19 @@ def nursing_summary(
     }
 
 
-@router.get("/enfermagem/fila")
+@router.get(
+    "/enfermagem/fila",
+    summary="Listar fila de triagem",
+    description=(
+        "Perfil autorizado: Enfermagem com autorização de triagem. Exibe somente "
+        "consultas com check-in e preserva a ordem oficial da fila."
+    ),
+    responses={
+        401: {"description": "Token ausente ou inválido."},
+        403: {"description": "Perfil sem autorização de Enfermagem/triagem."},
+        422: {"description": "Data ou classificação de risco inválida."},
+    },
+)
 def nursing_queue(
     day: date = Query(default_factory=clock.today_sao_paulo),
     specialty: str | None = None,
@@ -490,7 +532,17 @@ def nursing_queue(
     return result
 
 
-@router.get("/enfermagem/agendamentos/{appointment_id}")
+@router.get(
+    "/enfermagem/agendamentos/{appointment_id}",
+    summary="Consultar agendamento para triagem",
+    description="Perfil autorizado: Enfermagem com autorização de triagem.",
+    responses={
+        401: {"description": "Token ausente ou inválido."},
+        403: {"description": "Perfil sem autorização de Enfermagem/triagem."},
+        404: {"description": "Consulta inexistente."},
+        409: {"description": "Paciente ainda não realizou check-in."},
+    },
+)
 def nursing_details(
     appointment_id: int,
     actor: User = Depends(require_roles("enfermagem")),

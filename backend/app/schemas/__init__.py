@@ -116,6 +116,7 @@ class InternalUserResponse(BaseModel):
     masked_cpf: str
     email: str
     role: str
+    profession: str | None = None
     active: bool
     professional_registration: str | None = None
     specialty_id: int | None = None
@@ -151,6 +152,7 @@ class DoctorResponse(BaseModel):
     role: Literal["medico"] = "medico"
     active: bool
     specialty: str = "Clínica Geral"
+    profession: str = "Médico"
 
 
 class PatientRegistration(BaseModel):

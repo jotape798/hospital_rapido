@@ -9,6 +9,7 @@ from sqlalchemy import func, select
 # Este import configura DATABASE_URL temporária antes de qualquer módulo app.*.
 from test_integration import client, data, register
 
+from app.core import clock
 from app.core.database import SessionLocal
 from app.core.security import make_token, pwd
 from app.main import migrate_database
@@ -28,7 +29,7 @@ def _data(**overrides) -> dict:
 
 
 def _birth_for_age(age: int, *, birthday_delta_days: int = 0) -> date:
-    today = date.today()
+    today = clock.today_sao_paulo()
     birthday = today + timedelta(days=birthday_delta_days)
     return birthday.replace(year=birthday.year - age)
 
@@ -39,7 +40,7 @@ def _validation_case(
     condition_status: str = "pendente",
     checked_in: bool = True,
 ) -> tuple[int, int, dict[str, str]]:
-    now = datetime.now()
+    now = clock.now_sao_paulo_naive()
     with SessionLocal() as db:
         reception = User(
             nome="Recepção Validação", cpf="98765432100",
@@ -79,7 +80,7 @@ def _validation_case(
 
 
 def test_full_age_handles_59_exactly_60_future_birthday_and_over_60():
-    today = date.today()
+    today = clock.today_sao_paulo()
     assert full_age(_birth_for_age(59), today) == 59
     assert full_age(_birth_for_age(60), today) == 60
     assert full_age(_birth_for_age(60, birthday_delta_days=1), today) == 59
@@ -129,8 +130,8 @@ def test_condition_starts_pending_and_patient_cannot_confirm(client):
         patient_headers = _headers(patient)
         appointment = Appointment(
             paciente_id=patient.id, medico_id=patient.id,
-            especialidade="Clínica Geral", data_horario=datetime.now(),
-            status="em_espera", chegada_em=datetime.now(),
+            especialidade="Clínica Geral", data_horario=clock.now_sao_paulo_naive(),
+            status="em_espera", chegada_em=clock.now_sao_paulo_naive(),
         )
         db.add(appointment)
         db.commit()
@@ -173,7 +174,7 @@ def test_patient_can_withdraw_pending_condition_without_erasing_history(client):
 
 
 def test_confirmed_priority_cannot_be_changed_and_is_audited_with_role(client):
-    now = datetime.now()
+    now = clock.now_sao_paulo_naive()
     with SessionLocal() as db:
         reception = User(
             nome="Recepção Idempotente", cpf="98765432100",
@@ -242,7 +243,7 @@ def test_confirmed_priority_cannot_be_changed_and_is_audited_with_role(client):
 
 
 def test_reception_confirms_and_rejects_with_audit_and_queue_effect(client):
-    now = datetime.now()
+    now = clock.now_sao_paulo_naive()
     with SessionLocal() as db:
         reception = User(
             nome="Recepção Teste", cpf="98765432100", email="r@example.com",

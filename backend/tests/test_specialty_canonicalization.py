@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select, text
 
 from test_integration import client
+from app.core import clock
 from app.core.database import SessionLocal
 from app.core.security import make_token, pwd
 from app.models import Appointment, Specialty, User
@@ -41,7 +42,7 @@ def test_legacy_general_clinic_is_presented_canonically(client):
             paciente_id=patient.id,
             medico_id=doctor.id,
             especialidade="Pediatria",
-            data_horario=datetime.now() + timedelta(days=2),
+            data_horario=clock.now_sao_paulo_naive() + timedelta(days=2),
             status="agendado",
         )
         db.add(appointment)

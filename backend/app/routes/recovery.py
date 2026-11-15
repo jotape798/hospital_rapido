@@ -83,6 +83,11 @@ def forgot_by_email(
     email = str(payload.email).strip().lower()
     attempts = throttle(db, request, "email-recovery", email, 3)
     user = _email_user(email, db)
+    if user and not user.email_verificado:
+        raise HTTPException(
+            403,
+            "Confirme seu e-mail antes de solicitar a recuperação de senha.",
+        )
     if user:
         latest = db.scalar(
             select(PasswordRecovery)

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from test_integration import client
+from app.core import clock
 from app.core.database import SessionLocal
 from app.core.security import pwd
 from app.models import (
@@ -73,7 +74,7 @@ def _setup_staff_data():
             paciente_id=patient.id,
             medico_id=professional.id,
             especialidade="Clínica Geral",
-            data_horario=datetime.now().replace(
+            data_horario=clock.now_sao_paulo_naive().replace(
                 hour=10, minute=0, second=0, microsecond=0
             ),
             status="agendado",
@@ -255,7 +256,7 @@ def test_only_official_risk_levels_are_accepted_and_reach_medical_queue(client):
 
 def test_queue_orders_risk_legal_priority_and_arrival(client):
     _setup_staff_data()
-    now = datetime.now()
+    now = clock.now_sao_paulo_naive()
     with SessionLocal() as db:
         professional = db.scalar(select(User).where(User.perfil == "profissional"))
         cases = [
