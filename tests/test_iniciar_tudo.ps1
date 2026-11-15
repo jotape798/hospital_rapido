@@ -1,4 +1,34 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
+
+$utf8SemBom = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = $utf8SemBom
+$OutputEncoding = $utf8SemBom
+
+function Normalizar-SaidaUtf8 {
+    param([AllowEmptyString()][string]$Texto)
+
+    if ([string]::IsNullOrEmpty($Texto)) { return $Texto }
+
+    $windows1252 = [System.Text.Encoding]::GetEncoding(1252)
+    $utf8Estrito = New-Object System.Text.UTF8Encoding($false, $true)
+    $partes = [regex]::Split($Texto, '(\r\n|\n|\r)')
+    $normalizadas = foreach ($parte in $partes) {
+        if ($parte -match '[ÃÂâ]') {
+            try {
+                $candidata = $utf8Estrito.GetString($windows1252.GetBytes($parte))
+                $marcadoresOriginais = ([regex]::Matches($parte, '[ÃÂâ]')).Count
+                $marcadoresCandidatos = ([regex]::Matches($candidata, '[ÃÂâ]')).Count
+                if ($marcadoresCandidatos -lt $marcadoresOriginais) {
+                    $parte = $candidata
+                }
+            } catch [System.Text.DecoderFallbackException] {
+                # A linha já contém Unicode legítimo; preserve-a sem conversão destrutiva.
+            }
+        }
+        $parte.Normalize([System.Text.NormalizationForm]::FormC)
+    }
+    return ($normalizadas -join '')
+}
 
 $raizProjeto = Split-Path -Parent $PSScriptRoot
 $iniciador = Join-Path $raizProjeto 'INICIAR_TUDO.bat'
@@ -32,7 +62,10 @@ function Invocar-Iniciador {
     try {
         $saida = & $iniciador @Argumentos 2>&1 | Out-String
         $codigo = $LASTEXITCODE
-        return [pscustomobject]@{ Codigo = $codigo; Saida = $saida }
+        return [pscustomobject]@{
+            Codigo = $codigo
+            Saida = Normalizar-SaidaUtf8 -Texto $saida
+        }
     } finally {
         $ErrorActionPreference = $preferenciaAnterior
         $env:UBS_LAUNCHER_TEST_SCENARIO = $cenarioAnterior
@@ -44,7 +77,7 @@ function Invocar-Iniciador {
 function Parar-OuvintesTeste {
     foreach ($arquivoPid in $arquivoPidBackend, $arquivoPidFrontend) {
         if (-not (Test-Path -LiteralPath $arquivoPid)) { continue }
-        $idProcesso = [int](Get-Content -Raw -LiteralPath $arquivoPid)
+        $idProcesso = [int](Get-Content -Raw -LiteralPath $arquivoPid -Encoding UTF8)
         Stop-Process -Id $idProcesso -Force -ErrorAction SilentlyContinue
         Remove-Item -LiteralPath $arquivoPid -Force -ErrorAction SilentlyContinue
     }
@@ -133,7 +166,7 @@ if ($normal.Codigo -ne 0 -or $normal.Saida -notmatch 'Sistema iniciado com suces
     throw "O fluxo normal pelo INICIAR_TUDO.bat falhou.`n$($normal.Saida)"
 }
 
-$conteudoPowerShell = Get-Content -Raw $scriptIniciador
+$conteudoPowerShell = Get-Content -Raw -LiteralPath $scriptIniciador -Encoding UTF8
 foreach ($trechoServidorWeb in @(
     "'run', '-d', 'web-server'",
     "'--web-hostname', '127.0.0.1'",
@@ -188,8 +221,10 @@ try {
     }
     $processoIniciador.WaitForExit()
     $processoIniciador.Refresh()
-    $saidaModoIndependente = (Get-Content -Raw -LiteralPath $saidaIndependente) +
-        (Get-Content -Raw -LiteralPath $erroIndependente)
+    $saidaModoIndependente = Normalizar-SaidaUtf8 -Texto (
+        (Get-Content -Raw -LiteralPath $saidaIndependente -Encoding UTF8) +
+        (Get-Content -Raw -LiteralPath $erroIndependente -Encoding UTF8)
+    )
     if ($processoIniciador.ExitCode -ne 0 -or $saidaModoIndependente -notmatch 'Sistema iniciado com sucesso') {
         throw "O modo Web independente falhou.`n$saidaModoIndependente"
     }
@@ -197,7 +232,7 @@ try {
     if (-not (Test-Path -LiteralPath $marcadorNavegador)) {
         throw 'O navegador separado não foi aberto pelo iniciador.'
     }
-    if ((Get-Content -Raw -LiteralPath $marcadorNavegador).Trim() -ne "http://127.0.0.1:$portaFrontendTeste") {
+    if ((Get-Content -Raw -LiteralPath $marcadorNavegador -Encoding UTF8).Trim() -ne "http://127.0.0.1:$portaFrontendTeste") {
         throw 'O navegador separado não recebeu o endereço local do frontend.'
     }
     foreach ($tentativa in 1..2) {
@@ -254,7 +289,7 @@ if ($dispositivoInvalido.Codigo -eq 0 -or $dispositivoInvalido.Saida -match 'ini
     throw "Um dispositivo inválido não foi rejeitado corretamente.`n$($dispositivoInvalido.Saida)"
 }
 
-$conteudoBatch = Get-Content -Raw $iniciador
+$conteudoBatch = Get-Content -Raw -LiteralPath $iniciador -Encoding UTF8
 foreach ($trecho in @(
     'if "%~1"==""',
     'scripts\iniciar.ps1" -AtualizarTudo',
@@ -268,7 +303,7 @@ foreach ($trecho in @(
     }
 }
 
-$conteudoSeed = Get-Content -Raw (Join-Path $raizProjeto 'backend\app\core\demo_accounts.py')
+$conteudoSeed = Get-Content -Raw -LiteralPath (Join-Path $raizProjeto 'backend\app\core\demo_accounts.py') -Encoding UTF8
 $contasSeed = [regex]::Matches(
     $conteudoSeed,
     'DemoAccount\(\s*"(?<perfil>[^"]+)",\s*"[^"]+",\s*"(?<cpf>\d{11})",\s*"(?<senha>[^"]+)"'

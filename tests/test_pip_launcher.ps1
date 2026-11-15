@@ -1,4 +1,34 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
+
+$utf8SemBom = New-Object System.Text.UTF8Encoding($false)
+[Console]::OutputEncoding = $utf8SemBom
+$OutputEncoding = $utf8SemBom
+
+function Normalizar-SaidaUtf8 {
+    param([AllowEmptyString()][string]$Texto)
+
+    if ([string]::IsNullOrEmpty($Texto)) { return $Texto }
+
+    $windows1252 = [System.Text.Encoding]::GetEncoding(1252)
+    $utf8Estrito = New-Object System.Text.UTF8Encoding($false, $true)
+    $partes = [regex]::Split($Texto, '(\r\n|\n|\r)')
+    $normalizadas = foreach ($parte in $partes) {
+        if ($parte -match '[ÃÂâ]') {
+            try {
+                $candidata = $utf8Estrito.GetString($windows1252.GetBytes($parte))
+                $marcadoresOriginais = ([regex]::Matches($parte, '[ÃÂâ]')).Count
+                $marcadoresCandidatos = ([regex]::Matches($candidata, '[ÃÂâ]')).Count
+                if ($marcadoresCandidatos -lt $marcadoresOriginais) {
+                    $parte = $candidata
+                }
+            } catch [System.Text.DecoderFallbackException] {
+                # A linha já contém Unicode legítimo; preserve-a sem conversão destrutiva.
+            }
+        }
+        $parte.Normalize([System.Text.NormalizationForm]::FormC)
+    }
+    return ($normalizadas -join '')
+}
 
 $raizProjeto = Split-Path -Parent $PSScriptRoot
 $iniciador = Join-Path $raizProjeto 'INICIAR_TUDO.bat'
@@ -24,7 +54,11 @@ function Invocar-CenarioPip {
             -PastaAmbienteTesteInterno $pastaTesteCompleta `
             -SomentePrepararPythonTesteInterno `
             -SemPausa 2>&1 | Out-String
-        return [pscustomobject]@{ Codigo = $LASTEXITCODE; Saida = $saida }
+        $codigo = $LASTEXITCODE
+        return [pscustomobject]@{
+            Codigo = $codigo
+            Saida = Normalizar-SaidaUtf8 -Texto $saida
+        }
     } finally {
         $ErrorActionPreference = $preferenciaAnterior
         $env:UBS_PIP_TEST_SCENARIO = $cenarioAnterior
@@ -91,7 +125,7 @@ raise SystemExit(65)
         throw "A falha real exibiu [ERRO] sem explicação.`n$($falha.Saida)"
     }
 
-    $conteudo = Get-Content -Raw -LiteralPath $scriptIniciador
+    $conteudo = Get-Content -Raw -LiteralPath $scriptIniciador -Encoding UTF8
     if ($conteudo -notmatch [regex]::Escape('-m pip --disable-pip-version-check install')) {
         throw 'A chamada do pip não desabilita a verificação de versão.'
     }
