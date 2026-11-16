@@ -44,7 +44,7 @@ $pastaLogs = Join-Path $pastaProjeto 'logs\inicializacao'
 $arquivoBackend = Join-Path $pastaBackend 'app\main.py'
 $arquivoFlutter = Join-Path $pastaFrontend 'pubspec.yaml'
 $scriptDemonstracao = Join-Path $pastaBackend 'seed_demonstracao.py'
-$executavelWindows = Join-Path $pastaFrontend 'build\windows\x64\runner\Release\ubs_saude.exe'
+$executavelWindows = Join-Path $pastaFrontend 'build\windows\x64\runner\Release\UBS_Rapida.exe'
 $marcaBuildWindows = Join-Path (Split-Path $executavelWindows) '.ubs_build_stamp'
 $pastaAmbiente = if ($ModoTestePythonInterno -and $PastaAmbienteTesteInterno) {
     [System.IO.Path]::GetFullPath($PastaAmbienteTesteInterno)

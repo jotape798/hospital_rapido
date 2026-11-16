@@ -167,6 +167,12 @@ if ($normal.Codigo -ne 0 -or $normal.Saida -notmatch 'Sistema iniciado com suces
 }
 
 $conteudoPowerShell = Get-Content -Raw -LiteralPath $scriptIniciador -Encoding UTF8
+if ($conteudoPowerShell -notmatch [regex]::Escape('build\windows\x64\runner\Release\UBS_Rapida.exe')) {
+    throw 'O iniciador não procura o executável Windows oficial UBS_Rapida.exe.'
+}
+if ($conteudoPowerShell -match [regex]::Escape('ubs_saude.exe')) {
+    throw 'O iniciador ainda contém o nome antigo do executável Windows.'
+}
 foreach ($trechoServidorWeb in @(
     "'run', '-d', 'web-server'",
     "'--web-hostname', '127.0.0.1'",
