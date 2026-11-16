@@ -1,4 +1,4 @@
-package com.example.ubs_saude
+package br.com.ubsrapida.app
 
 import io.flutter.embedding.android.FlutterActivity
 
