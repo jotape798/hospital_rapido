@@ -2,7 +2,7 @@
 
 ## Acesso e painel
 
-O paciente entra pelo login único com CPF e senha assim que conclui o cadastro; não há confirmação obrigatória de e-mail. Após autenticação, o backend retorna `perfil = paciente` e o Flutter abre `PatientDashboard` (`frontend/lib/screens/dashboards.dart`).
+O paciente conclui o cadastro confirmando o código enviado ao e-mail. Somente depois da confirmação entra pelo login único com CPF e senha. Após autenticação, o backend retorna `perfil = paciente` e o Flutter abre `PatientDashboard` (`frontend/lib/screens/dashboards.dart`). A recuperação de senha só é iniciada para conta ativa com e-mail confirmado.
 
 O painel mostra saudação, próxima consulta, atalhos, lista de consultas e dados pessoais. Há atualização automática de status, acessibilidade, alteração/recuperação de senha e saída.
 

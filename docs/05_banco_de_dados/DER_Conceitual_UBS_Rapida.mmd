@@ -1,0 +1,113 @@
+erDiagram
+    %% Paciente, recepcao, enfermagem, medico e administrador sao perfis de USUARIO.
+    %% Nao existe uma tabela PACIENTE separada; o perfil profissional e detalhado em PERFIL_PROFISSIONAL.
+    USUARIO {
+        int id PK
+        string cpf UK
+        string email UK
+        string senha_hash
+        string perfil
+        boolean ativo
+    }
+
+    RESPONSAVEL {
+        int id PK
+        string cpf UK
+        string nome
+    }
+
+    PACIENTE_RESPONSAVEL {
+        int paciente_id PK,FK
+        int responsavel_id PK,FK
+        string parentesco
+    }
+
+    PERFIL_PROFISSIONAL {
+        int id PK
+        int usuario_id FK,UK
+        int especialidade_id FK
+        string registro_profissional UK
+        boolean autorizado_triagem
+    }
+
+    ESPECIALIDADE {
+        int id PK
+        string nome UK
+        boolean ativo
+    }
+
+    GRADE_ATENDIMENTO {
+        int id PK
+        int profissional_id FK
+        int especialidade_id FK
+        datetime data
+        string horario_inicio
+        string horario_fim
+    }
+
+    HORARIO_PROFISSIONAL {
+        int id PK
+        int medico_id FK
+        datetime data_horario UK
+        string especialidade
+        boolean bloqueado
+    }
+
+    CONSULTA {
+        int id PK
+        int paciente_id FK
+        int medico_id FK
+        datetime data_horario
+        string especialidade
+        string status
+    }
+
+    CLASSIFICACAO_RISCO {
+        int id PK
+        int consulta_id FK,UK
+        int profissional_id FK
+        string nivel_risco
+        datetime classificado_em
+    }
+
+    HISTORICO_STATUS_CONSULTA {
+        int id PK
+        int consulta_id FK
+        int alterado_por FK
+        string status_anterior
+        string status_novo
+    }
+
+    CONDICAO_PRIORITARIA {
+        int id PK
+        int paciente_id FK
+        int validada_por FK
+        string condicao
+        string status
+    }
+
+    HISTORICO_CONDICAO_PRIORITARIA {
+        int id PK
+        int condicao_prioritaria_id FK
+        int alterado_por FK
+        string status_anterior
+        string status_novo
+    }
+
+    USUARIO ||--o{ PACIENTE_RESPONSAVEL : paciente
+    RESPONSAVEL ||--o{ PACIENTE_RESPONSAVEL : responsavel
+    USUARIO ||--o| PERFIL_PROFISSIONAL : possui
+    ESPECIALIDADE ||--o{ PERFIL_PROFISSIONAL : vincula
+    USUARIO ||--o{ GRADE_ATENDIMENTO : profissional
+    ESPECIALIDADE ||--o{ GRADE_ATENDIMENTO : organiza
+    USUARIO ||--o{ HORARIO_PROFISSIONAL : medico
+    USUARIO ||--o{ CONSULTA : paciente
+    USUARIO ||--o{ CONSULTA : medico
+    CONSULTA ||--o| CLASSIFICACAO_RISCO : recebe
+    USUARIO ||--o{ CLASSIFICACAO_RISCO : profissional
+    CONSULTA ||--o{ HISTORICO_STATUS_CONSULTA : registra
+    USUARIO ||--o{ HISTORICO_STATUS_CONSULTA : altera
+    USUARIO ||--o{ CONDICAO_PRIORITARIA : paciente
+    USUARIO ||--o{ CONDICAO_PRIORITARIA : valida
+    CONDICAO_PRIORITARIA ||--o{ HISTORICO_CONDICAO_PRIORITARIA : registra
+    USUARIO ||--o{ HISTORICO_CONDICAO_PRIORITARIA : altera

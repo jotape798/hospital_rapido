@@ -1,7 +1,7 @@
 # Requisitos funcionais
 
 - RF01 — cadastrar paciente com validação de identidade, contato, senha e responsável quando menor;
-- RF02 — concluir o cadastro com conta ativa e permitir o primeiro login por CPF e senha sem depender de SMTP;
+- RF02 — concluir o cadastro com conta ativa, confirmar o e-mail por código temporário e então permitir o primeiro login por CPF e senha;
 - RF03 — autenticar por CPF e senha e direcionar conforme o perfil retornado;
 - RF04 — permitir recuperação e alteração de senha com código temporário;
 - RF05 — listar especialidades, profissionais, datas e horários disponíveis;

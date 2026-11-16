@@ -12,7 +12,7 @@ cd backend
 .\venv\Scripts\python.exe -m pytest tests -q --basetemp=<diretório temporário>
 ```
 
-Resultado final: **222 testes aprovados, 0 falhas**.
+Resultado final da versão 0.1.0: **232 testes aprovados, 0 falhas**.
 
 A cobertura inclui autenticação e autorização por perfil, rejeição de JWT com
 algoritmo `none`, entradas semelhantes a injeção SQL, cadastro com confirmação
@@ -38,8 +38,8 @@ flutter build web --release
 
 Resultados finais:
 
-- **177 testes aprovados, 0 falhas**;
-- `flutter analyze`: **nenhum problema encontrado**;
+- **190 testes aprovados, 0 falhas**;
+- `flutter analyze`: **nenhuma ocorrência**;
 - build Web `release`: **concluído com sucesso**. O diagnóstico de
   compatibilidade WebAssembly pode emitir avisos de dependências, sem impedir
   o build JavaScript de release.
@@ -62,6 +62,18 @@ descritas como aprovadas até uma execução manual registrada:
    nomes, estados, erros, ordem de leitura e mudanças dinâmicas;
 3. confirmar entrega, expiração, reenvio, correção de endereço e recuperação
    com um **serviço e uma caixa de e-mail reais**.
+4. instalar o APK em um **aparelho Android físico** e registrar abertura,
+   conexão, cadastro, confirmação, login, agendamento, cancelamento,
+   responsividade e reabertura.
+
+## Contratos e artefatos verificados
+
+- API: **66 caminhos e 71 operações**, com rota única de check-in;
+- banco: **17 tabelas e 28 relacionamentos de chave estrangeira**;
+- `flutter analyze`: nenhuma ocorrência;
+- versão desktop Windows 0.1.0 validada como entrega oficial para demonstração acadêmica;
+- Android APK/AAB gerados, mas ainda não validados em aparelho físico e fora da entrega oficial atual;
+- Web/PWA gerado, mas sem hospedagem pública e fora da entrega oficial atual.
 
 ## Limites da evidência
 

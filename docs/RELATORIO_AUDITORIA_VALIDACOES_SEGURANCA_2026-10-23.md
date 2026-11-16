@@ -1,5 +1,7 @@
 # Relatório de auditoria de validações, regras de negócio e segurança
 
+> **REGISTRO HISTÓRICO — 23/10/2026:** este relatório preserva os resultados obtidos naquela data e não representa a versão final atual. Os resultados vigentes estão em `docs/07_testes/testes_e_resultados.md`: 232 testes de backend, 190 testes Flutter e `flutter analyze` sem ocorrências para a versão desktop Windows 0.1.0.
+
 Data: 23/10/2026  
 Projeto: UBS Rápida  
 Ambiente: código local, API de teste e SQLite temporário isolado

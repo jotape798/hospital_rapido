@@ -1,0 +1,63 @@
+flowchart LR
+    paciente[Paciente]
+    recepcao[Recepção]
+    enfermagem[Enfermagem]
+    profissional[Médico / Profissional]
+    administrador[Administrador]
+
+    subgraph autenticacao[Identidade e acesso]
+        cadastro[Cadastro de paciente]
+        confirmacao[Confirmação de e-mail]
+        login[Login e redirecionamento por perfil]
+        recuperacao[Recuperação de senha]
+    end
+
+    subgraph jornada[Agendamento e jornada presencial]
+        agendamento[Agendamento]
+        cancelamento[Cancelamento e reagendamento]
+        checkin[Check-in ou registro de falta]
+        prioridade[Validação presencial de prioridade]
+        risco[Triagem e classificação de risco]
+        atendimento[Atendimento médico ou odontológico]
+    end
+
+    subgraph operacao[Gestão e rastreabilidade]
+        gestao[Gestão de usuários, especialidades, grades e bloqueios]
+        historico[Histórico de status e condições prioritárias]
+        auditoria[Auditoria administrativa e clínica]
+    end
+
+    paciente --> cadastro
+    paciente --> confirmacao
+    paciente --> login
+    paciente --> recuperacao
+    paciente --> agendamento
+    paciente --> cancelamento
+
+    recepcao --> login
+    recepcao --> checkin
+    recepcao --> prioridade
+
+    enfermagem --> login
+    enfermagem --> risco
+
+    profissional --> login
+    profissional --> atendimento
+
+    administrador --> login
+    administrador --> gestao
+    administrador --> auditoria
+
+    cadastro --> confirmacao
+    confirmacao --> login
+    checkin --> prioridade
+    checkin --> risco
+    risco --> atendimento
+
+    agendamento -. registra .-> historico
+    cancelamento -. registra .-> historico
+    checkin -. registra .-> historico
+    prioridade -. registra .-> historico
+    risco -. audita .-> auditoria
+    atendimento -. audita .-> auditoria
+    gestao -. audita .-> auditoria

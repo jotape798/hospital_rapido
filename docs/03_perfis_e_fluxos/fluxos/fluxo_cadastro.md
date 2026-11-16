@@ -11,4 +11,4 @@ Login -> Criar conta
   -> painel do paciente
 ```
 
-Por decisão de escopo e usabilidade do projeto acadêmico, o cadastro não chama o transporte SMTP nem cria registro de verificação. Uma indisponibilidade de e-mail não impede a criação da conta ou o primeiro login. A recuperação de senha permanece separada e continua exigindo código enviado por e-mail, armazenado somente como hash, com tentativas limitadas e uso único.
+O cadastro cria um registro de verificação, envia um código de seis dígitos e bloqueia o primeiro login até a confirmação. Código e token de correção são persistidos somente como hash, com expiração, tentativas limitadas e uso único. A recuperação de senha permanece separada, exige e-mail previamente confirmado e utiliza outro código temporário; endereços desconhecidos recebem resposta genérica e não geram registro.

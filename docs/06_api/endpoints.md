@@ -1,6 +1,6 @@
 # Endpoints da API
 
-Base local: `http://127.0.0.1:8000`. Rotas protegidas usam `Authorization: Bearer <JWT>`. A especificação executável permanece em `/docs`; este arquivo é um índice funcional do código atual.
+Base local: `http://127.0.0.1:8000`. Rotas protegidas usam autenticação Bearer. A versão 0.1.0 expõe **66 caminhos e 71 operações** na especificação executável em `/docs`; este arquivo é um índice funcional do código atual.
 
 ## Saúde
 
@@ -9,18 +9,18 @@ Base local: `http://127.0.0.1:8000`. Rotas protegidas usam `Authorization: Beare
 ## Autenticação, cadastro e e-mail
 
 - `POST /auth/login` — autentica CPF/senha e devolve JWT/perfil; público.
-- `POST /auth/register` — cria somente paciente com conta ativa; público e independente de SMTP. Exige senha e confirmação coincidentes. Pessoa idosa é calculada exclusivamente pela data de nascimento; PCD, gestante e lactante entram como pendentes.
+- `POST /auth/register` — cria somente paciente com e-mail ainda não confirmado; público. Exige senha e confirmação coincidentes, inicia o fluxo de confirmação e não libera o primeiro login antes da validação do endereço. Se o envio necessário ao cadastro falhar, a operação é revertida. Pessoa idosa é calculada exclusivamente pela data de nascimento; PCD, gestante e lactante entram como pendentes.
 - `PATCH /patients/me/priority-conditions` — permite ao paciente declarar PCD, gestante ou lactante, sempre pendentes, e retirar autodeclarações ainda pendentes sem apagar o histórico; não aceita conceder prioridade de idoso ou definir estado de validação.
 - `GET /auth/me` — dados da sessão; autenticado.
 - `POST /auth/change-password` — troca a senha atual; autenticado.
-- `POST /auth/email/solicitar-codigo` — envia código no fluxo auxiliar de confirmação.
-- `POST /auth/email/reenviar-codigo` — invalida o anterior e reenvia no fluxo auxiliar.
-- `POST /auth/email/corrigir` — troca o e-mail usando token temporário do fluxo auxiliar.
-- `POST /auth/email/validar-codigo` — valida o código no fluxo auxiliar; não condiciona o cadastro nem o login.
+- `POST /auth/email/solicitar-codigo` — inicia o envio no fluxo obrigatório de confirmação.
+- `POST /auth/email/reenviar-codigo` — invalida o anterior e reenvia no fluxo obrigatório.
+- `POST /auth/email/corrigir` — corrige o endereço durante a confirmação, usando autorização temporária do fluxo.
+- `POST /auth/email/validar-codigo` — conclui a confirmação e libera o primeiro login.
 
 ## Recuperação de senha
 
-- `POST /auth/esqueci-senha` — solicita código pelo e-mail sem revelar existência da conta; público.
+- `POST /auth/esqueci-senha` — solicita código para conta ativa com e-mail confirmado; endereço desconhecido recebe resposta genérica, enquanto conta ainda não confirmada recebe orientação para concluir a confirmação; público.
 - `POST /auth/validar-codigo-recuperacao` — valida código e emite token; público com código.
 - `POST /auth/redefinir-senha` — define nova senha; público com token de recuperação.
 
@@ -51,7 +51,7 @@ Base local: `http://127.0.0.1:8000`. Rotas protegidas usam `Authorization: Beare
 - `GET /recepcao/resumo` — indicadores da data; recepção.
 - `GET /recepcao/agendamentos` — agenda filtrada; recepção.
 - `GET /recepcao/agendamentos/{id}` — detalhes com CPF mascarado; recepção.
-- `PATCH /recepcao/agendamentos/{id}/check-in` — confirma chegada; recepção ou administrador.
+- `PATCH /recepcao/agendamentos/{appointment_id}/check-in` — rota única que confirma a chegada; recepção ou administrador.
 - `PATCH /recepcao/agendamentos/{id}/nao-compareceu` — registra ausência; recepção.
 - `PATCH /recepcao/agendamentos/{id}/condicoes/{condicao}/validacao` — confirma ou rejeita presencialmente PCD, gestante ou lactante e registra responsável/data; somente recepção.
 

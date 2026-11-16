@@ -5,7 +5,7 @@ Sistema acadêmico (MVP) criado para reduzir filas presenciais de agendamento em
 Todos os dados de demonstração são fictícios. O projeto não substitui sistemas oficiais de saúde e não é um prontuário eletrônico.
 
 - **Repositório:** https://github.com/Victoraquino135/hospital_rapido
-- **Última revisão:** 08/11/2026
+- **Última revisão:** 13/11/2026
 - **Protótipo externo:** nenhum link de protótipo foi localizado no projeto; a implementação Flutter é a referência visual atual.
 
 ## Tecnologias
@@ -22,26 +22,37 @@ Todos os dados de demonstração são fictícios. O projeto não substitui siste
 - Recepção;
 - Enfermagem;
 - Médico;
+- Dentista, usando o perfil de atendimento Médico com profissão e especialidade próprias;
 - Administrador.
 
 Não há seletores públicos de perfil. Após a autenticação, o backend informa o perfil e o Flutter redireciona o usuário.
 
-O fluxo presencial é `Recepção/check-in → Enfermagem/triagem → Médico → Concluída`. O Médico acessa somente pacientes atribuídos a ele com triagem concluída, registra um resumo simples e não possui acesso administrativo, à triagem ou ao cadastro de vagas.
+O fluxo presencial é `Recepção/check-in → Enfermagem/triagem → Profissional de atendimento → Concluída`. Médicos e dentistas acessam somente pacientes atribuídos a eles com triagem concluída, registram um resumo simples e não possuem acesso administrativo, à triagem ou ao cadastro de vagas. Especialidade e profissão não criam novos perfis de permissão.
 
-## Contas fictícias de demonstração
+## Equipe fictícia de demonstração
 
-| Perfil | CPF | Senha |
-| --- | --- | --- |
-| Administrador | `12345678909` | `Admin@123` |
-| Recepção | `98765432100` | `Recepcao@123` |
-| Enfermagem | `11144477735` | `Profissional@123` |
-| Médico | `39053344705` | `Medico@123` |
-| Médico — Pediatria | `16899535009` | `Pediatria@123` |
-| Paciente | `52998224725` | `Paciente@123` |
+A demonstração ampliada é opcional e separada da inicialização normal. Ela inclui:
 
-Todos os nomes e dados dessas contas são fictícios e destinados somente à demonstração acadêmica.
+- Recepção: Ana Paula Martins, Bruno Henrique Costa e Camila Rodrigues Silva;
+- Enfermagem: Juliana Ferreira Lima, Rafael Oliveira Santos e Patrícia Almeida Souza;
+- Dr. Lucas Mendes — Clínica Geral;
+- Dra. Mariana Costa — Cardiologia;
+- Dr. Pedro Henrique Alves — Pediatria;
+- Dra. Beatriz Rodrigues — Ginecologia;
+- Carolina Fernandes — Dentista, Odontologia;
+- Gabriel Ribeiro — Dentista, Odontologia.
+
+Os dados são fictícios. Para incluir ou conferir essa equipe de forma idempotente, execute na raiz:
+
+```powershell
+backend\venv\Scripts\python.exe backend\incluir_profissionais_demonstracao.py
+```
+
+CPFs e senhas temporárias ficam exclusivamente em `backend\profissionais_demo.env.local`, arquivo ignorado pelo Git. Não copie credenciais para README, logs, commits ou relatórios.
 
 ## Como executar
+
+Para gerar os pacotes distribuíveis de Windows, Android e Web, consulte [as instruções de distribuição](docs/09_distribuicao/INSTALACAO.md). Os artefatos locais são criados em `dist/`, sem banco, `.env`, segredos ou logs do ambiente de desenvolvimento.
 
 ### Pré-requisitos no Windows
 
@@ -94,7 +105,18 @@ Consulte o [índice da documentação](docs/README.md) e a [estrutura detalhada]
 
 Copie `backend/.env.example` para `backend/.env` quando precisar configurar SMTP. O `.env`, bancos locais, ambientes virtuais, caches e builds são ignorados pelo Git. Nunca publique senha SMTP, `JWT_SECRET_KEY`, tokens, hashes ou bancos com dados locais.
 
-O cadastro público cria somente pacientes, deixa a conta ativa e não depende do SMTP. O primeiro login é feito normalmente com CPF e senha, sem confirmação obrigatória de e-mail. A recuperação de senha continua usando código temporário de uso único armazenado somente como hash e exige SMTP configurado para entrega real.
+O cadastro público cria somente pacientes, envia um código temporário e exige a confirmação do e-mail antes do primeiro login. O código e o token de correção são armazenados somente como hash. A recuperação de senha também usa código temporário de uso único e só pode ser iniciada por contas com e-mail já confirmado; endereços desconhecidos recebem resposta genérica e não criam recuperação. A entrega real depende de SMTP configurado localmente.
+
+Credenciais, `backend/.env`, `backend/profissionais_demo.env.local`, bancos SQLite e backups são exclusivamente locais e não devem ser versionados.
+
+## Limitações conhecidas
+
+- a entrega real de e-mail depende de uma conta SMTP de teste configurada localmente;
+- na Web, o token permanece somente em memória e um recarregamento exige novo login;
+- o escopo odontológico usa a agenda e o atendimento simples já existentes, sem prontuário odontológico;
+- não há integração SUS/e-SUS, exames, prescrição, telemedicina, pagamentos ou painel público/TV.
+
+As tabelas `historico_status_consultas`, `historico_condicoes_prioritarias` e `classificacoes_risco`, seus campos principais e finalidades estão descritas em `docs/05_banco_de_dados/estrutura_banco.md`.
 
 ## Escopo do MVP
 

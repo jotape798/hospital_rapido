@@ -32,7 +32,7 @@ Estado atual de PCD, gestante e lactante. Possui unicidade por paciente/condiç�
 
 ### `historico_condicoes_prioritarias`
 
-Trilha imutável das declarações e decisões presenciais, com estado anterior/novo, responsável e data/hora. O administrador pode consultar; somente a recepção altera o estado atual pela rota protegida.
+Trilha imutável das declarações e decisões presenciais. PK `id`; FK `condicao_prioritaria_id -> condicoes_prioritarias.id`; campos `status_anterior`, `status_novo`, `alterado_por -> usuarios.id` e `criado_em`. Preserva a transição, o responsável e a data/hora para consulta do administrador; somente a recepção altera presencialmente o estado atual pela rota protegida.
 
 ### `responsaveis`
 

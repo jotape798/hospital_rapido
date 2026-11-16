@@ -1,22 +1,17 @@
 # Informações da entrega
 
 - **Projeto:** UBS Rápida;
-- **Versão final revisada:** 09/10/2026;
+- **Versão documentada:** 0.1.0;
 - **Repositório:** https://github.com/Victoraquino135/hospital_rapido;
 - **Protótipo:** nenhum link externo foi localizado; o Flutter executável é a referência visual;
-- **Plataformas verificadas:** Windows e Web compiladas; a estrutura Android é mantida, mas o download do Gradle foi bloqueado pela cadeia de certificados Java deste ambiente;
+- **Entrega oficial atual:** versão desktop Windows 0.1.0 validada para demonstração acadêmica;
+- **Artefatos fora da entrega oficial:** Android APK/AAB gerados, mas não validados em aparelho físico; Web/PWA gerado, mas sem hospedagem pública;
 - **Banco:** SQLite local preservado, com dados fictícios;
 - **Iniciador oficial:** `INICIAR_TUDO.bat`.
 
-## Contas fictícias
+## Dados fictícios
 
-As credenciais exibidas pelo iniciador pertencem somente à demonstração acadêmica. Não são senhas reais e não devem ser reutilizadas. Há contas fictícias para paciente, recepção, enfermagem, profissional de saúde e administrador/gestão.
-
-- Paciente — CPF `52998224725` — senha fictícia `Paciente@123`;
-- Recepção — CPF `98765432100` — senha fictícia `Recepcao@123`;
-- Enfermagem — CPF `45678912364` — senha fictícia `Enfermagem@123`;
-- Médico — CPF `39053344705` — senha fictícia `Medico@123`;
-- Administrador/Gestão — CPF `12345678909` — senha fictícia `Admin@123`.
+A demonstração acadêmica usa exclusivamente dados fictícios. Credenciais, endereços de e-mail, códigos temporários e configurações locais não fazem parte desta documentação e não devem ser incluídos nos pacotes distribuíveis.
 
 ## Resultados alcançados
 
@@ -24,15 +19,22 @@ As credenciais exibidas pelo iniciador pertencem somente à demonstração acad�
 - agendamento com controle de duplicidade e concorrência;
 - cancelamento/reagendamento com liberação de vaga;
 - fluxo presencial completo, com triagem manual e fila priorizada;
+- confirmação de e-mail obrigatória antes do primeiro login e recuperação restrita a e-mail confirmado;
+- rota única de check-in e relógio central da UBS;
+- filtros de auditoria e avisos de prioridade;
+- médicos, dentistas e Painel de Atendimento;
 - separação de permissões no backend;
 - acessibilidade, responsividade e atualização automática;
-- documentação, Swagger, testes e build de apresentação.
+- documentação, especificação da API, testes e pacote oficial Windows;
+- artefatos Android e Web disponíveis apenas como resultados de build, sem aprovação para publicação.
 
 ## Limitações e melhorias futuras
 
 - aplicação acadêmica local, sem integração SUS/e-SUS;
 - SMTP depende de configuração local segura;
+- instalação e fluxo completo do Android em aparelho físico ainda precisam de validação registrada;
+- publicação com backend HTTPS e configuração de produção ainda está pendente;
 - SQLite é adequado ao MVP, não a implantação multiunidade em produção;
-- depreciações técnicas de `datetime.utcnow()` e eventos FastAPI devem ser modernizadas em evolução futura;
+- o relógio central da UBS substituiu os usos antigos de `datetime.utcnow()`; futuras evoluções devem preservar essa política temporal;
 - painel público/TV, senha pública e chamador de fila ficam explicitamente fora do MVP e podem ser avaliados futuramente;
 - não há prontuário, diagnóstico, medicamentos, exames, vacinação, pagamentos ou IA clínica.

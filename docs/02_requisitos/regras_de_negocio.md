@@ -2,8 +2,8 @@
 
 - O cadastro público sempre cria um paciente; perfis internos são criados pelo administrador.
 - CPF e e-mail são únicos. O login aceita CPF válido, nunca CNS ou seleção manual de perfil.
-- O cadastro cria o paciente com conta ativa, não envia código e não depende de SMTP; o primeiro login usa CPF e senha.
-- A recuperação de senha continua exigindo o código temporário recebido por e-mail.
+- O cadastro cria o paciente com conta ativa, envia código temporário e bloqueia o primeiro login até a confirmação do e-mail.
+- A recuperação de senha exige e-mail previamente confirmado e código temporário recebido por e-mail; endereço desconhecido não cria recuperação nem recebe confirmação de cadastro.
 - Menor de idade deve possuir responsável legal válido e vinculado.
 - Horários devem ser futuros, em dia útil não feriado e pertencer ao profissional/especialidade.
 - Um horário não pode ser reservado simultaneamente por dois pacientes.
