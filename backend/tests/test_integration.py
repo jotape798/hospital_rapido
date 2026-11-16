@@ -84,10 +84,12 @@ def header(client):
 
 
 def future_weekday(hour=9, days=3):
+    from app.routes.admin import is_holiday
+
     value = (clock.now_sao_paulo_naive() + timedelta(days=days)).replace(
         hour=hour, minute=0, second=0, microsecond=0
     )
-    while value.weekday() >= 5:
+    while value.weekday() >= 5 or is_holiday(value.date()):
         value += timedelta(days=1)
     return value
 
