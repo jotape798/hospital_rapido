@@ -27,10 +27,12 @@ Organização executada em 09/10/2026, sem alterar telas, APIs, regras de negóc
 
 ## Validação após a organização
 
+> **Registro histórico — resultado substituído pela auditoria final.** Os números de 101 testes backend e 93 testes Flutter correspondem à verificação intermediária de 09/10/2026. Na auditoria final, após a ampliação das suítes, os resultados passaram para 232 testes backend e 190 testes Flutter aprovados, com `flutter analyze` sem ocorrências.
+
 - Iniciador oficial: teste automatizado aprovado após a mudança do script interno.
-- Backend: 101 testes aprovados usando diretório temporário isolado dentro da área ignorada do projeto.
-- Flutter: 93 testes aprovados.
-- `flutter analyze`: nenhum problema encontrado.
+- Backend naquela verificação intermediária: 101 testes aprovados usando diretório temporário isolado dentro da área ignorada do projeto.
+- Flutter naquela verificação intermediária: 93 testes aprovados.
+- `flutter analyze` naquela verificação intermediária: nenhum problema encontrado.
 - Links relativos da documentação atual: todos resolvidos.
 - `git diff --check`: nenhuma diferença inválida; apenas avisos normais de conversão de fim de linha no Windows.
 - Arquivos publicáveis: nenhum `.env`, banco, ambiente virtual, cache, build ou log identificado.
