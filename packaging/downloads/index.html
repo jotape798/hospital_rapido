@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#005a9c">
+  <meta name="description" content="Downloads locais do aplicativo acadêmico UBS Rápida.">
+  <title>Baixar UBS Rápida</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
+  <header class="topbar">
+    <img src="assets/ubs-rapida-logo.jpg" alt="UBS Rápida" width="1408" height="768">
+    <span>Distribuição acadêmica</span>
+  </header>
+
+  <main id="conteudo">
+    <section class="hero" aria-labelledby="titulo">
+      <div class="hero-copy">
+        <h1 id="titulo">UBS Rápida para demonstração acadêmica.</h1>
+        <p>O Windows desktop 0.1.0 é a entrega oficial. Android e Web são artefatos experimentais, fora da entrega oficial e sem validação final de publicação.</p>
+        <div class="downloads" aria-label="Opções de download">
+          <a class="button primary" href="../windows/UBS_Rapida-Windows-0.1.0.zip" download>Baixar para Windows</a>
+          <a class="button secondary" href="../android/UBS_Rapida-Android-0.1.0.apk" download>Baixar APK não validado</a>
+          <a class="button text" href="../web/index.html">Abrir artefato Web</a>
+        </div>
+      </div>
+      <aside class="release" aria-label="Informações da versão">
+        <strong>Versão 0.1.0</strong>
+        <span>Windows x64 · Android APK · PWA</span>
+        <span>Revisada em 14/11/2026</span>
+      </aside>
+    </section>
+
+    <section class="instructions" aria-labelledby="instalacao">
+      <div>
+        <h2 id="instalacao">Instalação sem surpresa</h2>
+        <p>Os pacotes não levam banco, segredos ou credenciais do computador de desenvolvimento. No Windows, a primeira execução cria uma base local nova e solicita o administrador da instalação.</p>
+      </div>
+      <ol>
+        <li><strong>Windows:</strong> extraia o ZIP inteiro e execute <code>Iniciar_UBS_Rapida.bat</code>. Não mova somente o executável.</li>
+        <li><strong>Android (não validado):</strong> o APK não teve o funcionamento confirmado em aparelho físico e não está aprovado para Play Store. Para testes futuros, ele deve ser compilado com o endereço acessível da API.</li>
+        <li><strong>Web (não publicado):</strong> use apenas em teste local servido por HTTP ou HTTPS. Não há hospedagem pública definitiva nem backend HTTPS configurado.</li>
+      </ol>
+    </section>
+
+    <section class="requirements" aria-labelledby="requisitos">
+      <h2 id="requisitos">Requisitos mínimos</h2>
+      <dl>
+        <div><dt>Windows</dt><dd>Windows 10 1809+, processador x64 e 500 MB livres.</dd></div>
+        <div><dt>Android</dt><dd>Android compatível com o mínimo definido pelo Flutter e acesso à API configurada.</dd></div>
+        <div><dt>Web</dt><dd>Navegador atual, JavaScript habilitado e conexão com a API por HTTPS em produção.</dd></div>
+      </dl>
+    </section>
+
+    <aside class="academic-note">
+      <h2>Uso acadêmico e dados fictícios</h2>
+      <p>Este projeto demonstra fluxos de uma UBS com dados fictícios. Não substitui sistemas oficiais de saúde e não deve receber dados clínicos reais sem uma avaliação completa de segurança, privacidade, infraestrutura e conformidade.</p>
+    </aside>
+  </main>
+
+  <footer>
+    <span>UBS Rápida</span>
+    <a href="INSTALACAO.md">Instruções completas</a>
+  </footer>
+</body>
+</html>

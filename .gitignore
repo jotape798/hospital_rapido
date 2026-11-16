@@ -75,3 +75,7 @@ frontend/test-renders/
 docs/99_arquivo_historico/acervo_documentacao_projeto/referencias/anotacoes_estudo_banco_de_dados.txt
 *.zip
 *.7z
+*.exe
+*.apk
+*.aab
+*.msix
