@@ -111,7 +111,7 @@ A última evidência conhecida registra:
 - frontend aprovado;
 - auditoria de segredos sem segredo real identificado.
 
-> Esses resultados correspondem à última execução validada. As suítes completas serão executadas novamente na auditoria final antes do push.
+> Esses resultados correspondem à auditoria final aprovada em 16/11/2026.
 
 ## 10. Situação das plataformas
 
@@ -119,8 +119,7 @@ A última evidência conhecida registra:
 
 - É a versão oficial da entrega.
 - O pacote oficial é a versão 0.1.0.
-- Foi anteriormente validado para demonstração acadêmica.
-- Será testado novamente na auditoria final.
+- Foi validado para demonstração acadêmica na auditoria final.
 - Não há declaração de publicação em produção.
 
 ### Android
@@ -156,16 +155,11 @@ A última evidência conhecida registra:
 - O pacote Windows não possui assinatura de código comercial.
 - SQLite é adequado ao MVP, não a uma implantação institucional ampla.
 
-## 12. Pendências finais
+## 12. Entrega concluída
 
-1. Substituir o PDF incorreto pelo PDF correto de 28 páginas.
-2. Confirmar o SHA-256 do PDF correto.
-3. Testar novamente o pacote Windows.
-4. Executar as suítes completas.
-5. Executar a auditoria de segurança.
-6. Revisar o Git.
-7. Verificar todos os commits.
-8. Confirmar a ausência de segredos.
-9. Fazer push.
-10. Conferir o GitHub.
-11. Preparar os links definitivos da entrega.
+- Auditoria final aprovada com 232 testes backend e 190 testes Flutter aprovados e `flutter analyze` sem ocorrências.
+- PDF final de 28 páginas validado e enviado ao GitHub.
+- Commits finais e push concluídos em 16/11/2026.
+- `main` e `origin/main` estavam sincronizadas após o push.
+- Android permanece não validado em aparelho físico e fora da entrega oficial.
+- Web/PWA permanece sem hospedagem pública e fora da entrega oficial.
