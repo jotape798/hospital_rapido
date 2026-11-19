@@ -88,6 +88,36 @@ A API e o Swagger ficam disponíveis em:
 http://127.0.0.1:8000/docs
 ```
 
+## Cadastro de paciente para avaliação
+
+1. Execute o arquivo `INICIAR_TUDO.bat`.
+2. Na tela de login, selecione **Criar conta**.
+3. Preencha as três etapas do cadastro com dados fictícios.
+4. Informe um e-mail ao qual você tenha acesso.
+5. Crie uma senha seguindo os requisitos apresentados na tela.
+6. Selecione **Cadastrar**.
+7. O sistema enviará um código de seis dígitos para o e-mail informado.
+8. Digite o código recebido para confirmar o e-mail.
+9. Após a confirmação, faça login usando o CPF e a senha cadastrados.
+
+O código possui validade de 10 minutos e pode ser utilizado uma única vez.
+
+### Conta pronta para demonstração
+
+Caso o avaliador queira acessar diretamente o sistema sem realizar um novo cadastro, utilize a conta fictícia previamente confirmada:
+
+- **Perfil:** Paciente
+- **CPF:** `52998224725`
+- **Senha:** `Paciente@123`
+
+### Observação sobre o envio de e-mail
+
+O cadastro de um novo paciente exige confirmação por e-mail. O envio real do código depende da configuração SMTP feita localmente em `backend/.env`, arquivo privado e ignorado pelo Git. Nenhuma senha SMTP acompanha o repositório ou o ZIP público.
+
+Por segurança, as credenciais SMTP não são distribuídas pelo GitHub. O cadastro com confirmação por e-mail funciona quando o responsável pela instalação configura localmente o arquivo `backend/.env`. Para avaliar o sistema sem essa configuração privada, utilize as contas fictícias criadas pelo inicializador. A confirmação de e-mail permanece ativa e não utiliza código fixo público.
+
+Consulte o [roteiro de demonstração](docs/ROTEIRO_DEMONSTRACAO.md) para a sequência sugerida de avaliação.
+
 ## Estrutura
 
 - `frontend/`: interface Flutter, assets e testes de widgets;
